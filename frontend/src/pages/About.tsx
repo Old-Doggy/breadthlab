@@ -16,10 +16,31 @@ const METRICS: { k: string; zh: string; en: string; f: string }[] = [
   { k: "ma250", zh: "MA250 上方", en: "Above MA250", f: "adj_close > MA250 的股票占比" },
 ];
 
+const fmtGate = (g: { id: number; value: number | null }) => {
+  if (g.value === null || g.value === undefined) return "—";
+  if (g.id === 5 || g.id === 6 || g.id === 7) return `${(g.value * 100).toFixed(2)}%`;
+  if (g.id === 9) return `${(g.value * 100).toFixed(2)}pp`;
+  if (g.id === 1) return `${g.value.toFixed(2)}×`;
+  return `${g.value}`;
+};
+
+const GATE_ZH: Record<number, string> = {
+  1: "股票数环比",
+  2: "主键唯一",
+  3: "价格合法性",
+  4: "收益一致性",
+  5: "字段覆盖率",
+  6: "广度合理性",
+  7: "行业覆盖",
+  8: "复权因子",
+  9: "与昨日连续性",
+};
+
 export default function About() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
   const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
+  const { data: quality } = useQuery({ queryKey: ["quality"], queryFn: api.quality });
 
   return (
     <div className="flex flex-col gap-4">
@@ -76,6 +97,48 @@ export default function About() {
           </Card>
         </div>
       </div>
+
+      <Card
+        title={lang === "en" ? "Quality gates" : "质量门禁"}
+        subtitle={
+          quality
+            ? `${quality.date} · ${quality.rows} rows · ${
+                quality.passed
+                  ? lang === "en"
+                    ? "all blocking checks passed"
+                    : "阻断级检查全部通过"
+                  : lang === "en"
+                    ? "blocking failures"
+                    : "存在阻断项"
+              }`
+            : lang === "en"
+              ? "no report yet"
+              : "暂无报告"
+        }
+        right={
+          <span className="pill h-[22px] px-2 text-[10px]">
+            {quality ? `${quality.gates.filter((g) => g.pass).length}/9` : "—"}
+          </span>
+        }
+        padded={false}
+        bodyClass="pt-0"
+      >
+        <div className="grid grid-cols-1 gap-1.5 px-4 pb-3 sm:grid-cols-3">
+          {(quality?.gates ?? []).map((g) => (
+            <div key={g.id} className="flex items-center gap-2 rounded-md bg-[var(--panel-2)] px-2.5 py-[6px]">
+              <span className="mono w-3 text-[9.5px] text-[var(--faint)]">{g.id}</span>
+              <span
+                className="h-[6px] w-[6px] shrink-0 rounded-full"
+                style={{ background: g.pass ? "var(--down)" : g.level === "block" ? "var(--up)" : "var(--warn)" }}
+              />
+              <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-2)]">
+                {lang === "en" ? g.name : GATE_ZH[g.id] ?? g.name}
+              </span>
+              <span className="mono text-[10px] text-[var(--muted)]">{fmtGate(g)}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <Card
         title={lang === "en" ? "Metric definitions" : "指标口径"}

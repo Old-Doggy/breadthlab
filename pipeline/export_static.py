@@ -149,8 +149,17 @@ def build_payload(con) -> dict:
         """
     )
 
+    quality = {}
+    qfile = settings.META / "quality" / "latest.json"
+    if qfile.exists():
+        try:
+            quality = json.loads(qfile.read_text(encoding="utf-8"))
+        except Exception:
+            quality = {}
+
     payload = {
         "meta": meta,
+        "quality": quality,
         "market": market,
         "sectors": sectors,
         "sector_monthly": monthly,

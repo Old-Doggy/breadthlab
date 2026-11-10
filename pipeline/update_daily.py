@@ -24,6 +24,7 @@ import pandas as pd
 
 from . import settings
 from .db import session
+from .quality_gates import run_gates
 
 DATASETS = ["daily", "daily_basic", "adj_factor", "stk_limit", "limit_list_d", "moneyflow", "margin"]
 
@@ -276,15 +277,22 @@ def run(target: str | None = None, dry: bool = False) -> dict:
                     inserted[ds] = n
                     log(f"{day} {ds}: {0 if df is None else len(df)} rows (inserted {n})")
                 except Exception as e:  # 单个数据集失败不阻断其它
-                    msg = f"{day} {ds} failed: {type(e).__name__}: {e}"
+                    msg = f"{day} {ds} failed: {type(e).__name__}"
+                    if ds == "limit_list_d":
+                        msg += " (no permission)"
                     log(msg)
                     report["warnings"].append(msg)
                 time.sleep(0.35)
-            ok, msgs = quality(con, day)
-            if not ok:
+            prev = con.execute(
+                "SELECT max(cal_date) FROM core_trade_cal WHERE is_open=1 AND cal_date < ? AND cal_date >= '20161201'",
+                [day],
+            ).fetchall()[0][0]
+            gate = run_gates(con, day, prev)
+            report.setdefault("gates", {})[day] = [{"id": g["id"], "pass": g["pass"]} for g in gate["gates"]]
+            if not gate["passed"]:
                 report["status"] = "failed"
-                report["warnings"].extend([f"{day}: {m}" for m in msgs])
-                log(f"quality gate failed: {msgs}")
+                report["warnings"].append(f"{day}: quality gates failed {gate['blocking']}")
+                log(f"quality gate failed: {gate['blocking']}")
                 break
             report["days"].append({"date": day, "inserted": inserted, "sec": round(time.time() - day_started, 1)})
         if report["days"] and pro is not None:
@@ -296,14 +304,32 @@ def run(target: str | None = None, dry: bool = False) -> dict:
         con.execute("CHECKPOINT")
 
     report["duration_sec"] = round(time.time() - started, 1)
+    qlatest = settings.META / "quality" / "latest.json"
+    qdata = json.loads(qlatest.read_text(encoding="utf-8")) if qlatest.exists() else {}
+    gates = [{"id": g["id"], "pass": g["pass"]} for g in qdata.get("gates", [])]
+    coverage = next((g["value"] for g in qdata.get("gates", []) if g["id"] == 5), None)
     status = {
         "status": report["status"],
         "last_trade_date": str(
             max([d["date"] for d in report["days"]], default=report.get("from", ""))
         ),
         "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "warnings": report["warnings"][-5:],
+        "rows": {"daily": qdata.get("rows")},
+        "coverage": coverage,
+        "sources": {
+            "daily": "tushare",
+            "daily_basic": "tushare",
+            "adj_factor": "tushare",
+            "stk_limit": "tushare",
+            "moneyflow": "tushare",
+            "margin": "tushare",
+            "index": "akshare",
+            "limit_list_d": "tushare (no permission)",
+        },
+        "gates": gates,
+        "warnings": report["warnings"][-3:],
         "duration_sec": report["duration_sec"],
+        "message": "",
     }
     (settings.META / "status.json").write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
     (settings.META / f"update_{date.today():%Y%m%d}.json").write_text(

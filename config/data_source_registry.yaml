@@ -1,0 +1,81 @@
+# 数据源注册表：能力矩阵、优先级、限频
+version: 1
+updated: 2026-11-10
+
+sources:
+  tushare:
+    priority: 1
+    auth: env:TUSHARE_TOKEN
+    rate_limit:
+      calls_per_min: 500
+      retry: 3
+      backoff_sec: 2
+    note: 主源；limit_list_d 需额外权限（当前账号无）
+
+  akshare:
+    priority: 2
+    auth: none
+    rate_limit:
+      calls_per_min: 120
+      retry: 2
+      backoff_sec: 1
+    note: 指数缺口与源间对账；个股仅做抽样校验
+
+  snapshot:
+    priority: 3
+    path: env:BREADTHLAB_SOURCE
+    note: 只读兜底，2014-01-02 → 2026-05-22
+
+datasets:
+  daily:
+    primary: tushare
+    fallback: [akshare, snapshot]
+    key: [ts_code, trade_date]
+    required: [open, high, low, close, pre_close, pct_chg, vol, amount]
+  daily_basic:
+    primary: tushare
+    fallback: [snapshot]
+    key: [ts_code, trade_date]
+    required: [circ_mv, total_mv, turnover_rate]
+  adj_factor:
+    primary: tushare
+    fallback: [snapshot]
+    key: [ts_code, trade_date]
+    required: [adj_factor]
+  stk_limit:
+    primary: tushare
+    fallback: [snapshot]
+    key: [ts_code, trade_date]
+    required: [up_limit, down_limit]
+  limit_list_d:
+    primary: tushare
+    fallback: [snapshot]
+    key: [ts_code, trade_date]
+    required: [limit, limit_times]
+    degrade: 无权限时用 stk_limit 价格判定 + 连续涨停天数
+  moneyflow:
+    primary: tushare
+    fallback: [snapshot]
+    key: [ts_code, trade_date]
+    required: [net_mf_amount]
+  margin:
+    primary: tushare
+    fallback: [snapshot]
+    key: [trade_date, exchange_id]
+    required: [rzye, rzmre]
+    note: T+1 发布，最新交易日为空
+  index_daily:
+    primary: akshare
+    fallback: [tushare, snapshot]
+    key: [ts_code, trade_date]
+    required: [close, pct_chg]
+  trade_cal:
+    primary: tushare
+    fallback: [snapshot]
+    key: [cal_date]
+    required: [is_open, pretrade_date]
+  stock_basic:
+    primary: tushare
+    fallback: [snapshot]
+    key: [ts_code]
+    required: [name, industry, market, exchange, list_status]

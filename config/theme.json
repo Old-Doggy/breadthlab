@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "note": "Single source of truth for chart/UI tokens (mirrors frontend/src/index.css).",
+  "themes": {
+    "dark": {
+      "bg": "#05070b",
+      "panel": "#0a0e15",
+      "panel2": "#0e131c",
+      "border": "rgba(255,255,255,0.07)",
+      "text": "#e9eef6",
+      "text2": "#b9c2d0",
+      "muted": "#7d8798",
+      "up": "#f0555a",
+      "down": "#23b57d",
+      "accent": "#5b8cff",
+      "warn": "#e8a33d"
+    },
+    "light": {
+      "bg": "#f3f5f8",
+      "panel": "#ffffff",
+      "panel2": "#f8fafc",
+      "border": "#e3e7ee",
+      "text": "#0d1526",
+      "text2": "#364152",
+      "muted": "#667085",
+      "up": "#d92d20",
+      "down": "#067647",
+      "accent": "#175cd3",
+      "warn": "#b54708"
+    }
+  },
+  "typography": {
+    "latin": "Inter Variable",
+    "mono": "JetBrains Mono Variable",
+    "cjk": "Microsoft YaHei",
+    "numeric": "tabular-nums"
+  },
+  "chart_rules": [
+    "title states the finding, not the variable",
+    "subtitle carries window, N, definition and clipping",
+    "explicit zero line; shared scales across comparisons",
+    "no rainbow palettes; one semantic per color"
+  ]
+}

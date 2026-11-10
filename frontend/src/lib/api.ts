@@ -161,6 +161,25 @@ export interface Distribution {
   };
 }
 
+export interface QualityGate {
+  id: number;
+  name: string;
+  pass: boolean;
+  value: number | null;
+  threshold: string;
+  level: "block" | "warn";
+  message: string;
+}
+
+export interface QualityReport {
+  date: string;
+  generated_at: string;
+  rows: number;
+  gates: QualityGate[];
+  passed: boolean;
+  blocking: number[];
+}
+
 export interface StaticPayload {
   meta: Meta;
   market: MarketDay[];
@@ -170,6 +189,7 @@ export interface StaticPayload {
   distribution: Record<string, Distribution>;
   stocks: StockRow[];
   watch_pool: StockRow[];
+  quality?: QualityReport;
 }
 
 declare global {
@@ -230,6 +250,8 @@ function writeWatch(codes: string[]) {
 
 export const api = {
   meta: () => (S ? ok(S.meta) : get<Meta>("/api/meta")),
+
+  quality: () => (S ? ok(S.quality ?? null) : get<QualityReport | null>("/api/quality")),
 
   distribution: (date: string) =>
     S

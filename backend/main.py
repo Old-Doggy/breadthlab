@@ -287,6 +287,16 @@ def del_watch(code: str):
     return jsonify({"ok": True})
 
 
+@app.get("/api/quality")
+def quality():
+    p = META / "quality" / "latest.json"
+    if not p.exists():
+        return jsonify({})
+    import json
+
+    return jsonify(json.loads(p.read_text(encoding="utf-8")))
+
+
 @app.get("/api/health")
 def health():
     try:
