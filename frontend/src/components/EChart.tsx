@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import * as echarts from "echarts";
 import type { EChartsOption } from "echarts";
 
@@ -10,7 +10,14 @@ interface Props {
   ariaLabel?: string;
 }
 
-export default function EChart({ option, height = "100%", className, onEvents, ariaLabel }: Props) {
+export interface EChartHandle {
+  getDataURL: (backgroundColor?: string) => string | null;
+}
+
+const EChart = forwardRef<EChartHandle, Props>(function EChart(
+  { option, height = "100%", className, onEvents, ariaLabel },
+  ref,
+) {
   const hostRef = useRef<HTMLDivElement>(null);
   const instRef = useRef<echarts.ECharts | null>(null);
 
@@ -42,6 +49,15 @@ export default function EChart({ option, height = "100%", className, onEvents, a
     return () => entries.forEach(([name, handler]) => inst.off(name, handler));
   }, [onEvents]);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      getDataURL: (backgroundColor = "transparent") =>
+        instRef.current?.getDataURL({ type: "png", pixelRatio: 2, backgroundColor }) ?? null,
+    }),
+    [],
+  );
+
   return (
     <div
       ref={hostRef}
@@ -51,4 +67,6 @@ export default function EChart({ option, height = "100%", className, onEvents, a
       aria-label={ariaLabel}
     />
   );
-}
+});
+
+export default EChart;

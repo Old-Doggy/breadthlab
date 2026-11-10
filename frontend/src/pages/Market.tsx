@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -8,9 +8,10 @@ import { paletteFor } from "../lib/theme";
 import { money, pct, ratio, shortDate, trendClass } from "../lib/format";
 import { returnBreadth } from "../lib/charts";
 import { concentrationChart, dispersionChart } from "../lib/charts2";
-import EChart from "../components/EChart";
+import EChart, { type EChartHandle } from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
 import { Segmented } from "../components/Segmented";
+import { downloadDataUrl } from "../lib/download";
 
 const RANGES = [
   { value: "3M", label: "3M", n: 66 },
@@ -37,6 +38,7 @@ export default function Market() {
   const lang = i18n.language;
   const { theme, colorblind } = useUI();
   const p = paletteFor(theme, colorblind);
+  const chartRef = useRef<EChartHandle>(null);
   const [params, setParams] = useSearchParams();
   const range = (params.get("range") as RangeKey) || "1Y";
   const setRange = (r: RangeKey) => {
@@ -114,15 +116,29 @@ export default function Market() {
             : "柱：等权收益 · 点线：市值加权 · 实线：沪深300 · 下：上涨占比"
         }
         right={
-          <span className="pill h-[22px] px-2 text-[10px]">
-            {rows[0].trade_date} → {last.trade_date}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="pill h-[22px] px-2 text-[10px]">
+              {rows[0].trade_date} → {last.trade_date}
+            </span>
+            <button
+              onClick={() =>
+                downloadDataUrl(
+                  chartRef.current?.getDataURL(p.bg) ?? null,
+                  `breadthlab_market_${last.trade_date}.png`,
+                )
+              }
+              className="rounded-md border border-[var(--border)] px-1.5 py-[2px] text-[9.5px] text-[var(--muted)] hover:text-[var(--text)]"
+              title={lang === "en" ? "Download chart as PNG" : "下载图表 PNG"}
+            >
+              PNG
+            </button>
+          </div>
         }
         padded={false}
         bodyClass="pt-1"
       >
         <div className="h-[400px] px-2 pb-2">
-          <EChart option={returnBreadth(p, rows, lang)} />
+          <EChart ref={chartRef} option={returnBreadth(p, rows, lang)} ariaLabel={`${rows[0].trade_date} 至 ${last.trade_date} 的等权收益、沪深300 与广度`} />
         </div>
       </Card>
 

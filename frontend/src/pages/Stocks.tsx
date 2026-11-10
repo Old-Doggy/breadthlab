@@ -6,6 +6,7 @@ import { api, type StockRow } from "../lib/api";
 import { useUI } from "../store/ui";
 import { paletteFor, axisStyle, baseChart } from "../lib/theme";
 import { money, num, pct, ratio, shortDate, trendClass } from "../lib/format";
+import { downloadCsv } from "../lib/download";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
 
@@ -136,10 +137,10 @@ export default function Stocks() {
           const s = q.data.raw;
           return `<div style="min-width:168px">
             <div style="font-weight:600">${s.name} <span style="color:${p.muted};font-family:monospace;font-size:10px">${s.ts_code}</span></div>
-            <div style="display:flex;justify-content:space-between;gap:16px"><span>收益</span><b style="color:${s.ret >= 0 ? p.up : p.down}">${(s.ret * 100).toFixed(2)}%</b></div>
-            <div style="display:flex;justify-content:space-between;gap:16px"><span>流通市值</span><b>${(s.circ_mv / 1e4).toFixed(0)}亿</b></div>
-            <div style="display:flex;justify-content:space-between;gap:16px"><span>换手率</span><b>${(s.turnover_rate || 0).toFixed(2)}%</b></div>
-            <div style="display:flex;justify-content:space-between;gap:16px"><span>成交额</span><b>${money(s.amount)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Return" : "收益"}</span><b style="color:${s.ret >= 0 ? p.up : p.down}">${(s.ret * 100).toFixed(2)}%</b></div>
+            <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Float cap" : "流通市值"}</span><b>${(s.circ_mv / 1e4).toFixed(0)}亿</b></div>
+            <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Turnover" : "换手率"}</span><b>${(s.turnover_rate || 0).toFixed(2)}%</b></div>
+            <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Amount" : "成交额"}</span><b>${money(s.amount)}</b></div>
           </div>`;
         },
       },
@@ -428,6 +429,31 @@ export default function Stocks() {
                 {label}
               </button>
             ))}
+            <button
+              onClick={() =>
+                downloadCsv(
+                  [
+                    ["ts_code", "name", "sector", "ret", "circ_mv", "turnover_rate", "amount", "pe_ttm", "pb"],
+                    ...filtered.map((r) => [
+                      r.ts_code,
+                      r.name,
+                      r.sw_l1,
+                      r.ret,
+                      r.circ_mv,
+                      r.turnover_rate,
+                      r.amount,
+                      r.pe_ttm,
+                      r.pb,
+                    ]),
+                  ],
+                  `breadthlab_stocks_${d ?? ""}.csv`,
+                )
+              }
+              className="ml-1 rounded-md border border-[var(--border)] px-1.5 py-[2px] text-[9.5px] text-[var(--muted)] hover:text-[var(--text)]"
+              title={lang === "en" ? "Export filtered rows" : "导出当前筛选结果"}
+            >
+              CSV
+            </button>
           </div>
         }
         padded={false}

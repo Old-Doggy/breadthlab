@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -9,7 +9,8 @@ import { money, pct, ratio, trendClass } from "../lib/format";
 import { sectorBubble } from "../lib/charts";
 import { sectorHeatmap } from "../lib/charts2";
 import { rotationIntensity, sectorRankHeatmap } from "../lib/charts3";
-import EChart from "../components/EChart";
+import { downloadDataUrl } from "../lib/download";
+import EChart, { type EChartHandle } from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
 
 export default function Sectors() {
@@ -17,6 +18,7 @@ export default function Sectors() {
   const lang = i18n.language;
   const { theme, colorblind } = useUI();
   const p = paletteFor(theme, colorblind);
+  const chartRef = useRef<EChartHandle>(null);
   const [params, setParams] = useSearchParams();
   const sel = params.get("sector");
   const setSel = (s: string | null) => {
@@ -95,6 +97,14 @@ export default function Sectors() {
                   <span className="inline-block h-[6px] w-[6px] rounded-full" style={{ background: p.down }} />
                   {lang === "en" ? "down" : "下跌"}
                 </span>
+                <button
+                  onClick={() =>
+                    downloadDataUrl(chartRef.current?.getDataURL(p.bg) ?? null, `breadthlab_sectors_${d ?? ""}.png`)
+                  }
+                  className="rounded-md border border-[var(--border)] px-1.5 py-[2px] text-[9.5px] text-[var(--muted)] hover:text-[var(--text)]"
+                >
+                  PNG
+                </button>
               </div>
             }
             padded={false}
@@ -102,6 +112,7 @@ export default function Sectors() {
           >
             <div className="h-[420px] px-2 pb-2">
               <EChart
+                ref={chartRef}
                 option={sectorBubble(p, rows, lang)}
                 onEvents={{
                   click: (params: unknown) => {

@@ -64,7 +64,7 @@ export function concentrationChart(p: Palette, rows: MarketDay[], lang = "zh"): 
     },
     series: [
       {
-        name: "Top10 日值",
+        name: lang === "en" ? "Top10 daily" : "Top10 日值",
         type: "bar",
         data: top10.map((v) => +v.toFixed(1)),
         barWidth: "45%",
@@ -72,7 +72,7 @@ export function concentrationChart(p: Palette, rows: MarketDay[], lang = "zh"): 
         silent: true,
       },
       {
-        name: "Top10 20日均值",
+        name: lang === "en" ? "Top10 20d avg" : "Top10 20日均值",
         type: "line",
         data: roll(top10),
         showSymbol: false,
@@ -93,7 +93,7 @@ export function concentrationChart(p: Palette, rows: MarketDay[], lang = "zh"): 
         },
       },
       {
-        name: "涨幅前5%份额 · 20日均值",
+        name: lang === "en" ? "Top5% gainers share · 20d avg" : "涨幅前5%份额 · 20日均值",
         type: "line",
         data: roll(gain),
         showSymbol: false,
@@ -219,8 +219,8 @@ export function regimeScatter(
         const [ret, breadth, , csd] = q.data.value;
         return `<div style="min-width:158px">
           <div style="font-family:monospace;font-size:11px;color:${p.muted};margin-bottom:5px">${q.data.trade_date}</div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>等权收益</span><b style="color:${ret >= 0 ? p.up : p.down}">${ret.toFixed(2)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>上涨占比</span><b>${breadth.toFixed(0)}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "等权收益", "EW return")}</span><b style="color:${ret >= 0 ? p.up : p.down}">${ret.toFixed(2)}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${breadth.toFixed(0)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "分化度", "Dispersion")}</span><b>${(csd * 100).toFixed(2)}pp</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "状态", "Regime")}</span><b>${q.seriesName}</b></div>
         </div>`;
@@ -314,7 +314,7 @@ export function dispersionChart(p: Palette, rows: MarketDay[], lang = "zh"): ECh
     },
     series: [
       {
-        name: "横截面标准差",
+        name: lang === "en" ? "Cross-section SD" : "横截面标准差",
         type: "line",
         data: rows.map((r) => +(r.csd * 100).toFixed(2)),
         showSymbol: false,
@@ -335,7 +335,7 @@ export function dispersionChart(p: Palette, rows: MarketDay[], lang = "zh"): ECh
         },
       },
       {
-        name: "IQR",
+        name: lang === "en" ? "IQR" : "IQR",
         type: "line",
         data: rows.map((r) => +(r.iqr * 100).toFixed(2)),
         showSymbol: false,

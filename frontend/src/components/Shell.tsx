@@ -9,6 +9,7 @@ import {
   Languages,
   Layers3,
   Moon,
+  Palette,
   RefreshCw,
   ScatterChart,
   Star,
@@ -215,6 +216,16 @@ export default function Shell() {
             >
               <Languages size={11.5} />
               {i18n.language === "zh" ? "中" : "EN"}
+            </button>
+
+            <button
+              onClick={toggleColorblind}
+              className="flex h-[26px] w-[26px] items-center justify-center rounded-md border border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] transition-colors hover:text-[var(--text)] md:h-[27px] md:w-[27px]"
+              title={colorblind ? "多色（默认）" : "色盲友好（蓝/橙）"}
+              aria-pressed={colorblind}
+              aria-label={colorblind ? "切换到默认配色" : "切换到色盲友好配色"}
+            >
+              <Palette size={12.5} className={colorblind ? "text-[var(--accent)]" : ""} />
             </button>
 
             <button

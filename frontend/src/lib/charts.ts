@@ -101,7 +101,7 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "等权收益", "Equal-weight")}</span><b style="color:${r.ew_ret >= 0 ? p.up : p.down}">${(r.ew_ret * 100).toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "沪深300", "CSI 300")}</span><b>${r.hs300_ret === null ? "—" : (r.hs300_ret * 100).toFixed(2) + "%"}</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${br[i]}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>上涨/下跌</span><b>${r.n_adv} / ${r.n_dec}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨/下跌", "Adv/Dec")}</span><b>${r.n_adv} / ${r.n_dec}</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "Top10 贡献", "Top10 share")}</span><b>${((r.top10_share || 0) * 100).toFixed(0)}%</b></div>
         </div>`;
       },
@@ -148,7 +148,7 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
     ],
     series: [
       {
-        name: "等权收益",
+        name: L(lang, "等权收益", "Equal-weight"),
         type: "bar",
         xAxisIndex: 0,
         yAxisIndex: 0,
@@ -161,7 +161,7 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         },
       },
       {
-        name: "市值加权",
+        name: L(lang, "市值加权", "Cap-weighted"),
         type: "line",
         xAxisIndex: 0,
         yAxisIndex: 0,
@@ -171,7 +171,7 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         lineStyle: { width: 1, color: p.faint, type: "dotted" },
       },
       {
-        name: "沪深300",
+        name: L(lang, "沪深300", "CSI 300"),
         type: "line",
         xAxisIndex: 0,
         yAxisIndex: 0,
@@ -181,7 +181,7 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         lineStyle: { width: 1.2, color: p.text2, opacity: 0.75 },
       },
       {
-        name: "上涨占比",
+        name: L(lang, "上涨占比", "Breadth"),
         type: "line",
         xAxisIndex: 1,
         yAxisIndex: 1,
