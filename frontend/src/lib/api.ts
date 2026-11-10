@@ -124,6 +124,8 @@ export interface StockRow {
   amount: number;
   is_limit_up: boolean;
   is_limit_down: boolean;
+  shares?: number;
+  cost?: number;
 }
 
 export interface Contributor {
@@ -251,16 +253,33 @@ const inRange = (d: string, start?: string, end?: string) =>
 
 const WATCH_KEY = "bl.watch";
 
-function readWatch(): string[] {
+export interface WatchItem {
+  ts_code: string;
+  shares: number;
+  cost: number;
+}
+
+function readWatch(): WatchItem[] {
   try {
-    return JSON.parse(localStorage.getItem(WATCH_KEY) || "[]");
+    const raw = JSON.parse(localStorage.getItem(WATCH_KEY) || "[]");
+    return (Array.isArray(raw) ? raw : []).map((x: unknown) => {
+      if (typeof x === "string") return { ts_code: x, shares: 0, cost: 0 };
+      const o = x as WatchItem;
+      return { ts_code: o.ts_code, shares: Number(o.shares) || 0, cost: Number(o.cost) || 0 };
+    });
   } catch {
     return [];
   }
 }
 
-function writeWatch(codes: string[]) {
-  localStorage.setItem(WATCH_KEY, JSON.stringify([...new Set(codes)]));
+function writeWatch(items: WatchItem[]) {
+  const seen = new Set<string>();
+  const clean = items.filter((x) => {
+    if (!x.ts_code || seen.has(x.ts_code)) return false;
+    seen.add(x.ts_code);
+    return true;
+  });
+  localStorage.setItem(WATCH_KEY, JSON.stringify(clean));
 }
 
 export const api = {
@@ -335,27 +354,47 @@ export const api = {
 
   watchlist: () => {
     if (S) {
-      const codes = readWatch();
-      return ok(S.watch_pool.filter((r) => codes.includes(r.ts_code)));
+      const items = readWatch();
+      const map = new Map(items.map((i) => [i.ts_code, i]));
+      return ok(
+        S.watch_pool
+          .filter((r) => map.has(r.ts_code))
+          .map((r) => ({ ...r, shares: map.get(r.ts_code)!.shares, cost: map.get(r.ts_code)!.cost })),
+      );
     }
     return get<StockRow[]>("/api/watchlist");
   },
 
-  addWatch: (code: string) => {
+  addWatch: (code: string, shares = 0, cost = 0) => {
     if (S) {
-      writeWatch([...readWatch(), code]);
+      const items = readWatch();
+      if (!items.some((i) => i.ts_code === code)) items.push({ ts_code: code, shares, cost });
+      writeWatch(items);
       return ok({ ok: true });
     }
     return fetch("/api/watchlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ts_code: code }),
+      body: JSON.stringify({ ts_code: code, shares, cost }),
+    }).then((r) => r.json());
+  },
+
+  updateWatch: (code: string, patch: { shares?: number; cost?: number }) => {
+    if (S) {
+      const items = readWatch().map((i) => (i.ts_code === code ? { ...i, ...patch } : i));
+      writeWatch(items);
+      return ok({ ok: true });
+    }
+    return fetch(`/api/watchlist/${encodeURIComponent(code)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
     }).then((r) => r.json());
   },
 
   removeWatch: (code: string) => {
     if (S) {
-      writeWatch(readWatch().filter((c) => c !== code));
+      writeWatch(readWatch().filter((c) => c.ts_code !== code));
       return ok({ ok: true });
     }
     return fetch(`/api/watchlist/${encodeURIComponent(code)}`, { method: "DELETE" }).then((r) => r.json());

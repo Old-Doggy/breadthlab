@@ -241,28 +241,42 @@ def stock_series(code: str):
 
 def wdb() -> sqlite3.Connection:
     c = sqlite3.connect(DB)
-    c.execute("CREATE TABLE IF NOT EXISTS watchlist (ts_code TEXT PRIMARY KEY, added_at TEXT)")
+    c.execute(
+        "CREATE TABLE IF NOT EXISTS watchlist (ts_code TEXT PRIMARY KEY, shares REAL DEFAULT 0, cost REAL DEFAULT 0, added_at TEXT)"
+    )
+    cols = [r[1] for r in c.execute("PRAGMA table_info(watchlist)").fetchall()]
+    if "shares" not in cols:
+        c.execute("ALTER TABLE watchlist ADD COLUMN shares REAL DEFAULT 0")
+    if "cost" not in cols:
+        c.execute("ALTER TABLE watchlist ADD COLUMN cost REAL DEFAULT 0")
     return c
 
 
 @app.get("/api/watchlist")
 def watchlist():
     c = wdb()
-    codes = [r[0] for r in c.execute("SELECT ts_code FROM watchlist ORDER BY added_at").fetchall()]
+    pos = {
+        r[0]: {"shares": r[1] or 0.0, "cost": r[2] or 0.0}
+        for r in c.execute("SELECT ts_code, shares, cost FROM watchlist ORDER BY added_at").fetchall()
+    }
     c.close()
-    if not codes:
+    if not pos:
         return jsonify([])
+    codes = list(pos.keys())
     ph = ",".join("?" * len(codes))
-    return jsonify(
-        rows(
-            f"""
-            SELECT ts_code, name, sw_l1, market, trade_date, close, ret, circ_mv, total_mv,
-                   turnover_rate, pe_ttm, pb, amount, is_limit_up, is_limit_down
-            FROM mart_stock_latest WHERE ts_code IN ({ph})
-            """,
-            codes,
-        )
+    data = rows(
+        f"""
+        SELECT ts_code, name, sw_l1, market, trade_date, close, ret, circ_mv, total_mv,
+               turnover_rate, pe_ttm, pb, amount, is_limit_up, is_limit_down
+        FROM mart_stock_latest WHERE ts_code IN ({ph})
+        """,
+        codes,
     )
+    for r in data:
+        p = pos.get(r["ts_code"], {})
+        r["shares"] = p.get("shares", 0.0)
+        r["cost"] = p.get("cost", 0.0)
+    return jsonify(data)
 
 
 @app.post("/api/watchlist")
@@ -271,8 +285,28 @@ def add_watch():
     code = str(payload.get("ts_code", "")).strip()
     if not code:
         abort(400, "ts_code required")
+    shares = float(payload.get("shares") or 0)
+    cost = float(payload.get("cost") or 0)
     c = wdb()
-    c.execute("INSERT OR IGNORE INTO watchlist VALUES (?, ?)", (code, datetime.now().isoformat()))
+    c.execute(
+        "INSERT OR IGNORE INTO watchlist (ts_code, shares, cost, added_at) VALUES (?, ?, ?, ?)",
+        (code, shares, cost, datetime.now().isoformat()),
+    )
+    if shares or cost:
+        c.execute("UPDATE watchlist SET shares = ?, cost = ? WHERE ts_code = ?", (shares, cost, code))
+    c.commit()
+    c.close()
+    return jsonify({"ok": True})
+
+
+@app.patch("/api/watchlist/<code>")
+def patch_watch(code: str):
+    payload = request.get_json(silent=True) or {}
+    c = wdb()
+    if "shares" in payload:
+        c.execute("UPDATE watchlist SET shares = ? WHERE ts_code = ?", (float(payload["shares"] or 0), code))
+    if "cost" in payload:
+        c.execute("UPDATE watchlist SET cost = ? WHERE ts_code = ?", (float(payload["cost"] or 0), code))
     c.commit()
     c.close()
     return jsonify({"ok": True})
