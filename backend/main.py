@@ -287,6 +287,34 @@ def del_watch(code: str):
     return jsonify({"ok": True})
 
 
+@app.get("/api/rotation")
+def rotation():
+    return jsonify(
+        rows(
+            """
+            SELECT trade_date::VARCHAR AS trade_date, rotation_intensity, n_sectors
+            FROM mart_rotation_day
+            WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 3 YEAR FROM mart_rotation_day)
+            ORDER BY trade_date
+            """
+        )
+    )
+
+
+@app.get("/api/sector-ranks")
+def sector_ranks():
+    return jsonify(
+        rows(
+            """
+            SELECT trade_date::VARCHAR AS trade_date, sw_l1, rank20, ret20
+            FROM mart_sector_rank
+            WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 1 YEAR FROM mart_sector_rank)
+            ORDER BY trade_date, sw_l1
+            """
+        )
+    )
+
+
 @app.get("/api/quality")
 def quality():
     p = META / "quality" / "latest.json"

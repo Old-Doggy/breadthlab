@@ -7,6 +7,7 @@ import { palettes } from "../lib/theme";
 import { money, pct, ratio, trendClass } from "../lib/format";
 import { sectorBubble } from "../lib/charts";
 import { sectorHeatmap } from "../lib/charts2";
+import { rotationIntensity, sectorRankHeatmap } from "../lib/charts3";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
 
@@ -26,6 +27,8 @@ export default function Sectors() {
     enabled: !!d,
   });
   const { data: monthly } = useQuery({ queryKey: ["sector-monthly"], queryFn: () => api.sectorMonthly() });
+  const { data: rotation } = useQuery({ queryKey: ["rotation"], queryFn: api.rotation });
+  const { data: ranks } = useQuery({ queryKey: ["sector-ranks"], queryFn: api.sectorRanks });
   const { data: stocks } = useQuery({
     queryKey: ["stocks", d, sel],
     queryFn: () => api.stocks(d as string, sel || undefined),
@@ -149,6 +152,58 @@ export default function Sectors() {
           {months.length ? <EChart option={sectorHeatmap(p, months, lang)} /> : <div className="skeleton h-full w-full" />}
         </div>
       </Card>
+
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-12 xl:col-span-7">
+          <Card
+            title={lang === "en" ? "Rank migration matrix" : "排名迁移矩阵 · 20 日收益"}
+            subtitle={
+              lang === "en"
+                ? "Rows = sectors · colour = rank, red is strongest · weekly sampling"
+                : "行 = 行业 · 颜色越红排名越靠前 · 每周采样"
+            }
+            right={<span className="pill h-[22px] px-2 text-[10px]">26W</span>}
+            padded={false}
+            bodyClass="pt-0"
+          >
+            <div className="h-[430px] px-2 pb-2">
+              {(ranks?.length ?? 0) > 0 ? (
+                <EChart option={sectorRankHeatmap(p, ranks!, lang)} />
+              ) : (
+                <div className="skeleton h-full w-full" />
+              )}
+            </div>
+          </Card>
+        </div>
+        <div className="col-span-12 xl:col-span-5">
+          <Card
+            title={lang === "en" ? "Rotation intensity" : "轮动强度"}
+            subtitle={
+              lang === "en"
+                ? "Mean absolute daily change in sector rank, last 3 years"
+                : "行业排名日变化的绝对值均值 · 近 3 年"
+            }
+            right={
+              rotation?.length ? (
+                <span className="pill h-[22px] px-2 text-[10px]">
+                  {lang === "en" ? "avg" : "均值"}{" "}
+                  {(rotation.reduce((a, r) => a + r.rotation_intensity, 0) / rotation.length).toFixed(2)}
+                </span>
+              ) : null
+            }
+            padded={false}
+            bodyClass="pt-0"
+          >
+            <div className="h-[340px] px-2 pb-2">
+              {(rotation?.length ?? 0) > 0 ? (
+                <EChart option={rotationIntensity(p, rotation!, lang)} />
+              ) : (
+                <div className="skeleton h-full w-full" />
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
 
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-12 xl:col-span-4">

@@ -85,6 +85,24 @@ def build_payload(con) -> dict:
         """
     )
 
+    rotation = rows(
+        """
+        SELECT trade_date::VARCHAR AS trade_date, rotation_intensity
+        FROM mart_rotation_day
+        WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 3 YEAR FROM mart_rotation_day)
+        ORDER BY trade_date
+        """
+    )
+
+    sector_ranks = rows(
+        """
+        SELECT trade_date::VARCHAR AS trade_date, sw_l1, rank20
+        FROM mart_sector_rank
+        WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 1 YEAR FROM mart_sector_rank)
+        ORDER BY trade_date, sw_l1
+        """
+    )
+
     contrib_rows = rows(
         """
         WITH days AS (
@@ -163,6 +181,8 @@ def build_payload(con) -> dict:
         "market": market,
         "sectors": sectors,
         "sector_monthly": monthly,
+        "rotation": rotation,
+        "sector_ranks": sector_ranks,
         "contrib": contrib,
         "distribution": {meta["last_trade_date"]: {"bins": dist_rows, "stats": dist_stats}},
         "stocks": stocks,

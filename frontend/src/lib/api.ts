@@ -161,6 +161,19 @@ export interface Distribution {
   };
 }
 
+export interface RotationDay {
+  trade_date: string;
+  rotation_intensity: number;
+  n_sectors?: number;
+}
+
+export interface SectorRank {
+  trade_date: string;
+  sw_l1: string;
+  rank20: number;
+  ret20?: number;
+}
+
 export interface QualityGate {
   id: number;
   name: string;
@@ -185,6 +198,8 @@ export interface StaticPayload {
   market: MarketDay[];
   sectors: Record<string, SectorDay[]>;
   sector_monthly: SectorMonth[];
+  rotation?: RotationDay[];
+  sector_ranks?: SectorRank[];
   contrib: Record<string, Contributor[]>;
   distribution: Record<string, Distribution>;
   stocks: StockRow[];
@@ -297,6 +312,10 @@ export const api = {
     if (S) return ok(S.sector_monthly.filter((r) => inRange(r.month, start, end)));
     return get<SectorMonth[]>("/api/sectors/monthly", { start, end });
   },
+
+  rotation: () => (S ? ok(S.rotation ?? []) : get<RotationDay[]>("/api/rotation")),
+
+  sectorRanks: () => (S ? ok(S.sector_ranks ?? []) : get<SectorRank[]>("/api/sector-ranks")),
 
   stocks: (date: string, sector?: string, limit = 6000) => {
     if (S) {

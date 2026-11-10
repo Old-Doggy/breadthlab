@@ -257,6 +257,39 @@ GROUP BY trade_date, sw_l1
 ORDER BY trade_date, sw_l1
 """
 
+SQL_SECTOR_RANK = """
+CREATE OR REPLACE TABLE mart_sector_rank AS
+WITH s AS (
+    SELECT trade_date, sw_l1, ew_ret,
+           exp(sum(ln(1 + ew_ret)) OVER (
+               PARTITION BY sw_l1 ORDER BY trade_date
+               ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
+           )) - 1 AS ret20
+    FROM mart_sector_day
+)
+SELECT trade_date, sw_l1, ret20,
+       rank() OVER (PARTITION BY trade_date ORDER BY ret20 DESC) AS rank20
+FROM s
+WHERE ret20 IS NOT NULL
+ORDER BY trade_date, rank20
+"""
+
+SQL_ROTATION = """
+CREATE OR REPLACE TABLE mart_rotation_day AS
+WITH d AS (
+    SELECT trade_date, sw_l1, rank20,
+           lag(rank20) OVER (PARTITION BY sw_l1 ORDER BY trade_date) AS prev_rank
+    FROM mart_sector_rank
+)
+SELECT trade_date,
+       avg(abs(rank20 - prev_rank)) AS rotation_intensity,
+       count(*)                     AS n_sectors
+FROM d
+WHERE prev_rank IS NOT NULL
+GROUP BY trade_date
+ORDER BY trade_date
+"""
+
 SQL_MONTH = """
 CREATE OR REPLACE TABLE mart_market_month AS
 SELECT date_trunc('month', trade_date)::DATE AS month,
@@ -305,6 +338,8 @@ STEPS = [
     ("feat_stock", SQL_FEAT),
     ("mart_market_day", SQL_MARKET),
     ("mart_sector_day", SQL_SECTOR_DAY),
+    ("mart_sector_rank", SQL_SECTOR_RANK),
+    ("mart_rotation_day", SQL_ROTATION),
     ("mart_market_month", SQL_MONTH),
     ("mart_sector_month", SQL_SECTOR_MONTH),
     ("mart_stock_latest", SQL_LATEST),
