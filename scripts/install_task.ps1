@@ -1,4 +1,4 @@
-# 注册「每个交易日 17:35 自动更新」的 Windows 计划任务（当前用户）
+﻿# 注册「每个交易日 17:35 自动更新」的 Windows 计划任务（当前用户）
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $script = Join-Path $root "scripts\update.ps1"

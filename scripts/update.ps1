@@ -1,4 +1,4 @@
-# 每日更新：增量 -> 重算 mart -> 重新导出单文件 dashboard
+﻿# 每日更新：增量 -> 重算 mart -> 重新导出单文件 dashboard
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -21,7 +21,11 @@ try {
   & $py -m pipeline.export_static 2>&1 | Tee-Object -FilePath $log -Append
   if ($LASTEXITCODE -ne 0) { throw "export_static failed ($LASTEXITCODE)" }
 
-  & (Join-Path $PSScriptRoot "briefing.ps1") 2>&1 | Tee-Object -FilePath $log -Append
+  try {
+    & (Join-Path $PSScriptRoot "briefing.ps1")
+  } catch {
+    Write-Warning "[update] briefing failed (data is still updated): $_"
+  }
   Write-Host "[update] OK -> frontend/dist/BreadthLab.html"
 } catch {
   Write-Host "[update] FAILED: $_"

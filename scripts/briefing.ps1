@@ -1,4 +1,5 @@
-# 生成每日市场体检简报（PDF + PNG），无需服务器
+﻿# Generate daily briefing PDF + PNG without a server.
+# Edge is given an ASCII-only temp path to avoid code-page issues with Chinese paths.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $edge = @(
@@ -7,24 +8,37 @@ $edge = @(
   "C:\Program Files\Google\Chrome\Application\chrome.exe"
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-if (-not $edge) { throw "未找到 Edge/Chrome" }
+if (-not $edge) { throw "Edge/Chrome not found" }
 
 $html = Join-Path $root "frontend\dist\BreadthLab.html"
-if (-not (Test-Path $html)) { throw "请先运行 python -m pipeline.export_static" }
+if (-not (Test-Path $html)) { throw "Run python -m pipeline.export_static first" }
 
 $stamp = Get-Date -Format "yyyyMMdd"
 $outDir = Join-Path $root "data\snapshots\$stamp"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-$url = "file:///" + ($html -replace "\\", "/") + "#/briefing"
+$tmp = Join-Path $env:TEMP "breadthlab_briefing"
+New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+$tmpHtml = Join-Path $tmp "dashboard.html"
+$tmpPdf = Join-Path $tmp "briefing.pdf"
+$tmpPng = Join-Path $tmp "briefing.png"
+Copy-Item $html $tmpHtml -Force
+Remove-Item $tmpPdf, $tmpPng -Force -ErrorAction SilentlyContinue
+
+$url = "file:///" + ($tmpHtml -replace "\\", "/") + "#/briefing"
+$common = "--headless=new --disable-gpu --no-first-run --allow-file-access-from-files --virtual-time-budget=12000"
+
+$pdfArgs = "$common --no-pdf-header-footer --print-to-pdf=`"$tmpPdf`" `"$url`""
+Start-Process -FilePath $edge -ArgumentList $pdfArgs -NoNewWindow -Wait `
+  -RedirectStandardError (Join-Path $tmp "edge_pdf.log") `
+  -RedirectStandardOutput (Join-Path $tmp "edge_out.log") | Out-Null
+
+$pngArgs = "$common --hide-scrollbars --window-size=1240,1754 --screenshot=`"$tmpPng`" `"$url`""
+Start-Process -FilePath $edge -ArgumentList $pngArgs -NoNewWindow -Wait `
+  -RedirectStandardError (Join-Path $tmp "edge_png.log") `
+  -RedirectStandardOutput (Join-Path $tmp "edge_out2.log") | Out-Null
+
 $pdf = Join-Path $outDir "briefing.pdf"
 $png = Join-Path $outDir "briefing.png"
-
-& $edge --headless=new --disable-gpu --no-first-run --allow-file-access-from-files `
-  --no-pdf-header-footer --virtual-time-budget=12000 --print-to-pdf="$pdf" "$url" 2>&1 | Out-Null
-
-& $edge --headless=new --disable-gpu --no-first-run --allow-file-access-from-files `
-  --hide-scrollbars --window-size=1240,1754 --virtual-time-budget=12000 --screenshot="$png" "$url" 2>&1 | Out-Null
-
-if (Test-Path $pdf) { Write-Host "[briefing] PDF  -> $pdf" } else { Write-Host "[briefing] PDF 生成失败" }
-if (Test-Path $png) { Write-Host "[briefing] PNG  -> $png" } else { Write-Host "[briefing] PNG 生成失败" }
+if (Test-Path $tmpPdf) { Copy-Item $tmpPdf $pdf -Force; Write-Host "[briefing] PDF -> $pdf" } else { throw "PDF generation failed" }
+if (Test-Path $tmpPng) { Copy-Item $tmpPng $png -Force; Write-Host "[briefing] PNG -> $png" } else { throw "PNG generation failed" }
