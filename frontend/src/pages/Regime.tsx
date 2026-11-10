@@ -1,0 +1,201 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { api, type MarketDay } from "../lib/api";
+import { useUI } from "../store/ui";
+import { palettes } from "../lib/theme";
+import { money, pct, ratio, shortDate } from "../lib/format";
+import { regimeScatter, regimeColor } from "../lib/charts2";
+import { regimeLabel, regimeOf, type RegimeKey } from "../lib/regime";
+import EChart from "../components/EChart";
+import { Card, MicroLabel } from "../components/Card";
+import { Segmented } from "../components/Segmented";
+
+const RANGES = [
+  { value: "1Y", label: "1Y", n: 250 },
+  { value: "3Y", label: "3Y", n: 750 },
+  { value: "ALL", label: "ALL", n: 99999 },
+] as const;
+type RangeKey = (typeof RANGES)[number]["value"];
+
+const KEYS: RegimeKey[] = ["broad_up", "concentrated_up", "mixed", "broad_down"];
+
+function std(xs: number[]) {
+  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const v = Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length) || 1;
+  return { m, v };
+}
+
+export default function Regime() {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
+  const { theme } = useUI();
+  const p = palettes[theme];
+  const [range, setRange] = useState<RangeKey>("3Y");
+  const [sel, setSel] = useState<string | null>(null);
+
+  const { data } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
+  const all = data ?? [];
+  const rows = useMemo(() => all.slice(-(RANGES.find((r) => r.value === range)?.n ?? 750)), [all, range]);
+
+  const selected = sel ?? rows[rows.length - 1]?.trade_date ?? null;
+  const selRow = rows.find((r) => r.trade_date === selected);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    KEYS.forEach((k) => (c[k] = 0));
+    rows.forEach((r) => (c[regimeOf(r)] += 1));
+    return c;
+  }, [rows]);
+
+  const similar = useMemo(() => {
+    if (!selRow || rows.length < 30) return [] as { r: MarketDay; d: number }[];
+    const ew = std(rows.map((r) => r.ew_ret));
+    const br = std(rows.map((r) => r.breadth));
+    const cs = std(rows.map((r) => r.csd));
+    const tp = std(rows.map((r) => r.top10_share || 0));
+    const z = (v: number, s: { m: number; v: number }) => (v - s.m) / s.v;
+    return rows
+      .filter((r) => r.trade_date !== selRow.trade_date)
+      .map((r) => {
+        const d = Math.sqrt(
+          (z(r.ew_ret, ew) - z(selRow.ew_ret, ew)) ** 2 +
+            (z(r.breadth, br) - z(selRow.breadth, br)) ** 2 +
+            (z(r.csd, cs) - z(selRow.csd, cs)) ** 2 +
+            (z(r.top10_share || 0, tp) - z(selRow.top10_share || 0, tp)) ** 2,
+        );
+        return { r, d };
+      })
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 7);
+  }, [rows, selRow]);
+
+  if (!rows.length) return <div className="skeleton h-[560px] w-full" />;
+
+  const total = rows.length;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-[19px] font-semibold tracking-tight">{t("regime.title")}</h1>
+          <p className="mt-1 text-[12px] text-[var(--muted)]">{t("regime.subtitle")}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[10.5px] text-[var(--faint)]">
+            {lang === "en" ? "click any dot to inspect" : "点击任意点查看该日"}
+          </span>
+          <Segmented options={RANGES.map((r) => ({ value: r.value, label: r.label }))} value={range} onChange={setRange} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-12 xl:col-span-9">
+          <Card
+            title={t("regime.scatter")}
+            subtitle={
+              lang === "en"
+                ? "Each dot is a trading day · size = turnover · dashed line = last 30 sessions"
+                : "每个点是一个交易日 · 大小 = 成交额 · 虚线 = 最近 30 日轨迹"
+            }
+            right={
+              selRow ? (
+                <div className="flex items-center gap-2">
+                  <span className="mono text-[11px] text-[var(--text-2)]">{selRow.trade_date}</span>
+                  <span className="pill h-[22px] px-2 text-[10px]">{regimeLabel(regimeOf(selRow), lang)}</span>
+                </div>
+              ) : null
+            }
+            padded={false}
+            bodyClass="pt-0"
+          >
+            <div className="h-[480px] px-1 pb-1">
+              <EChart
+                option={regimeScatter(p, rows, selected, lang)}
+                onEvents={{
+                  click: (params: unknown) => {
+                    const d = (params as { data?: { trade_date?: string } })?.data?.trade_date;
+                    if (d) setSel(d);
+                  },
+                }}
+              />
+            </div>
+          </Card>
+        </div>
+
+        <div className="col-span-12 flex flex-col gap-4 xl:col-span-3">
+          <Card title={t("regime.stats")} subtitle={lang === "en" ? `${total} sessions in range` : `区间共 ${total} 个交易日`}>
+            <div className="flex flex-col gap-3">
+              {KEYS.map((k) => {
+                const n = counts[k];
+                const share = total ? n / total : 0;
+                return (
+                  <div key={k}>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-[11.5px] text-[var(--text-2)]">
+                        <span className="h-[7px] w-[7px] rounded-full" style={{ background: regimeColor(k) }} />
+                        {regimeLabel(k, lang)}
+                      </span>
+                      <span className="mono text-[11.5px] text-[var(--text)]">
+                        {n}
+                        <span className="ml-1 text-[10px] text-[var(--muted)]">{ratio(share, 0)}</span>
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-[3px] w-full rounded-full bg-[var(--panel-3)]">
+                      <div className="h-full rounded-full" style={{ width: `${share * 100}%`, background: regimeColor(k), opacity: 0.75 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card
+            title={t("regime.similar")}
+            subtitle={
+              lang === "en"
+                ? "Nearest sessions in (return, breadth, dispersion, concentration)"
+                : "按收益、广度、分化度、集中度的标准化距离"
+            }
+            padded={false}
+            bodyClass="pt-0"
+          >
+            <div className="flex flex-col px-3 pb-2">
+              {similar.map(({ r, d }) => (
+                <button
+                  key={r.trade_date}
+                  onClick={() => setSel(r.trade_date)}
+                  className="flex items-center gap-2 rounded-md px-2 py-[7px] text-left transition-colors hover:bg-[var(--panel-2)]"
+                >
+                  <span className="mono w-[58px] text-[11px] text-[var(--text-2)]">{shortDate(r.trade_date)}</span>
+                  <span className={`mono w-[46px] text-[10.5px] ${r.ew_ret >= 0 ? "up" : "down"}`}>{pct(r.ew_ret)}</span>
+                  <span className="mono w-[38px] text-[10.5px] text-[var(--muted)]">{ratio(r.breadth, 0)}</span>
+                  <span className="ml-auto mono text-[10px] text-[var(--faint)]">d={d.toFixed(2)}</span>
+                </button>
+              ))}
+              {!similar.length && <div className="py-6 text-center text-[11px] text-[var(--muted)]">—</div>}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {selRow && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {[
+            { k: t("metric.ew"), v: pct(selRow.ew_ret), tone: selRow.ew_ret >= 0 ? "up" : "down" },
+            { k: t("metric.breadth"), v: ratio(selRow.breadth, 0) },
+            { k: t("metric.csd"), v: `${(selRow.csd * 100).toFixed(2)}pp` },
+            { k: t("metric.top10"), v: ratio(selRow.top10_share, 0) },
+            { k: t("metric.limitUp"), v: `${selRow.limit_up_list_n ?? "—"} / ${selRow.limit_down_list_n ?? "—"}` },
+            { k: t("metric.amount"), v: money(selRow.amount) },
+          ].map((s) => (
+            <div key={s.k} className="card px-4 py-3">
+              <MicroLabel>{s.k}</MicroLabel>
+              <div className={`mono mt-2 text-[16px] font-semibold ${s.tone === "up" ? "up" : s.tone === "down" ? "down" : ""}`}>{s.v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

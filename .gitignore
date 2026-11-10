@@ -1,0 +1,22 @@
+# data / secrets
+data/
+*.duckdb
+*.duckdb.wal
+.env
+logs/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# os
+Thumbs.db
+.DS_Store

@@ -1,0 +1,318 @@
+"""BreadthLab API（Flask 同步版）。
+
+运行：python -m backend.main  （默认 127.0.0.1:8000）
+设计：口径在 mart 层算好，接口只做筛选与序列化；DuckDB 单连接 + 锁。
+"""
+from __future__ import annotations
+
+import math
+import sqlite3
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import duckdb
+from flask import Flask, abort, jsonify, request, send_from_directory
+
+ROOT = Path(__file__).resolve().parents[1]
+LAKE = ROOT / "data" / "lake.duckdb"
+META = ROOT / "data" / "meta"
+DB = ROOT / "data" / "app.sqlite"
+DIST = ROOT / "frontend" / "dist"
+
+app = Flask(__name__, static_folder=None)
+app.json.ensure_ascii = False
+app.json.sort_keys = False
+
+_lock = threading.Lock()
+_con: duckdb.DuckDBPyConnection | None = None
+
+
+def con() -> duckdb.DuckDBPyConnection:
+    global _con
+    if _con is None:
+        if not LAKE.exists():
+            abort(503, "lake.duckdb 尚未构建")
+        _con = duckdb.connect(str(LAKE), read_only=True)
+        _con.execute("SET threads=4")
+    return _con
+
+
+def _clean(v: Any) -> Any:
+    if isinstance(v, float) and math.isnan(v):
+        return None
+    return v
+
+
+def rows(sql: str, params: list[Any] | None = None) -> list[dict]:
+    with _lock:
+        cur = con().execute(sql, params or [])
+        cols = [d[0] for d in cur.description]
+        return [{c: _clean(v) for c, v in zip(cols, r)} for r in cur.fetchall()]
+
+
+def one(sql: str, params: list[Any] | None = None) -> dict:
+    r = rows(sql, params)
+    return r[0] if r else {}
+
+
+@app.get("/api/meta")
+def meta():
+    base = one("SELECT min(trade_date) f, max(trade_date) d, count(*) n FROM mart_market_day")
+    n_stocks = one("SELECT count(*) n FROM mart_stock_latest")["n"]
+    status = {"status": "ok", "updated_at": None, "warnings": []}
+    p = META / "status.json"
+    if p.exists():
+        try:
+            import json
+
+            status.update(json.loads(p.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    return jsonify(
+        {
+            "first_trade_date": str(base["f"]) if base.get("f") else None,
+            "last_trade_date": str(base["d"]) if base.get("d") else None,
+            "n_days": base.get("n"),
+            "n_stocks": n_stocks,
+            "source": "Tushare Pro",
+            "status": status.get("status", "ok"),
+            "updated_at": status.get("updated_at"),
+            "warnings": status.get("warnings", []),
+        }
+    )
+
+
+@app.get("/api/market/series")
+def market_series():
+    start = request.args.get("start")
+    end = request.args.get("end")
+    freq = request.args.get("freq", "day")
+    if freq == "month":
+        return jsonify(
+            rows(
+                """
+                SELECT month::VARCHAR AS trade_date, n_days, breadth, ew_ret, cw_ret, med_ret,
+                       csd, amount, hhi, top10_share, ew_ret_cum, hs300_ret_cum
+                FROM mart_market_month
+                WHERE (?::DATE IS NULL OR month >= ?::DATE) AND (?::DATE IS NULL OR month <= ?::DATE)
+                ORDER BY month
+                """,
+                [start, start, end, end],
+            )
+        )
+    return jsonify(
+        rows(
+            """
+            SELECT * FROM mart_market_day
+            WHERE (?::DATE IS NULL OR trade_date >= ?::DATE) AND (?::DATE IS NULL OR trade_date <= ?::DATE)
+            ORDER BY trade_date
+            """,
+            [start, start, end, end],
+        )
+    )
+
+
+@app.get("/api/market/day/<d>")
+def market_day(d: str):
+    m = one("SELECT * FROM mart_market_day WHERE trade_date = ?::DATE", [d])
+    if not m:
+        abort(404, "no data for this date")
+    contrib = rows(
+        """
+        WITH f AS (
+            SELECT ts_code, name, sw_l1, ret, prev_circ_mv
+            FROM feat_stock
+            WHERE trade_date = ?::DATE AND NOT is_new_stock AND prev_circ_mv > 0
+        ),
+        w AS (SELECT *, prev_circ_mv / sum(prev_circ_mv) OVER () AS weight FROM f)
+        SELECT ts_code, name, sw_l1, ret, weight, weight * ret AS contrib
+        FROM w ORDER BY abs(weight * ret) DESC LIMIT 24
+        """,
+        [d],
+    )
+    sectors = rows("SELECT * FROM mart_sector_day WHERE trade_date = ?::DATE ORDER BY ew_ret DESC", [d])
+    m["contributors"] = contrib
+    m["sectors"] = sectors
+    return jsonify(m)
+
+
+@app.get("/api/distribution/<d>")
+def distribution(d: str):
+    bins = rows(
+        """
+        WITH f AS (
+            SELECT ret FROM feat_stock
+            WHERE trade_date = ?::DATE AND NOT is_new_stock AND ret BETWEEN -0.11 AND 0.11
+        )
+        SELECT least(43, greatest(0, cast(floor((ret + 0.11) / 0.22 * 44) AS INTEGER))) AS b, count(*) AS n, min(ret) AS lo, max(ret) AS hi
+        FROM f GROUP BY b ORDER BY b
+        """,
+        [d],
+    )
+    stats = one(
+        """
+        SELECT count(*) n, median(ret) med, quantile_cont(ret,0.05) p05, quantile_cont(ret,0.25) p25,
+               quantile_cont(ret,0.75) p75, quantile_cont(ret,0.95) p95,
+               avg(ret) mean, stddev_samp(ret) sd
+        FROM feat_stock WHERE trade_date = ?::DATE AND NOT is_new_stock
+        """,
+        [d],
+    )
+    return jsonify({"bins": bins, "stats": stats})
+
+
+@app.get("/api/sectors")
+def sectors():
+    d = request.args.get("date")
+    return jsonify(rows("SELECT * FROM mart_sector_day WHERE trade_date = ?::DATE ORDER BY ew_ret DESC", [d]))
+
+
+@app.get("/api/sectors/series")
+def sector_series():
+    start, end = request.args.get("start"), request.args.get("end")
+    return jsonify(
+        rows(
+            """
+            SELECT * FROM mart_sector_day
+            WHERE (?::DATE IS NULL OR trade_date >= ?::DATE) AND (?::DATE IS NULL OR trade_date <= ?::DATE)
+            ORDER BY trade_date, sw_l1
+            """,
+            [start, start, end, end],
+        )
+    )
+
+
+@app.get("/api/sectors/monthly")
+def sector_monthly():
+    start, end = request.args.get("start"), request.args.get("end")
+    return jsonify(
+        rows(
+            """
+            SELECT month::VARCHAR AS month, sw_l1, n_days, breadth, ew_ret, cw_ret, iqr, amount, ew_ret_cum
+            FROM mart_sector_month
+            WHERE (?::DATE IS NULL OR month >= ?::DATE) AND (?::DATE IS NULL OR month <= ?::DATE)
+            ORDER BY month, sw_l1
+            """,
+            [start, start, end, end],
+        )
+    )
+
+
+@app.get("/api/stocks")
+def stocks():
+    d = request.args.get("date")
+    sector = request.args.get("sector")
+    limit = int(request.args.get("limit", 400))
+    return jsonify(
+        rows(
+            """
+            SELECT ts_code, name, sw_l1, market, trade_date, close, ret, circ_mv, total_mv,
+                   turnover_rate, pe_ttm, pb, amount * 1000 AS amount, is_limit_up, is_limit_down
+            FROM feat_stock
+            WHERE trade_date = ?::DATE AND NOT is_new_stock
+              AND (? IS NULL OR sw_l1 = ?)
+            ORDER BY ret DESC LIMIT ?
+            """,
+            [d, sector, sector, limit],
+        )
+    )
+
+
+@app.get("/api/stock/<code>")
+def stock_series(code: str):
+    start, end = request.args.get("start"), request.args.get("end")
+    return jsonify(
+        rows(
+            """
+            SELECT trade_date::VARCHAR AS trade_date, close, adj_close, ret, circ_mv, turnover_rate,
+                   amount * 1000 AS amount, sw_l1, name
+            FROM feat_stock
+            WHERE ts_code = ?
+              AND (?::DATE IS NULL OR trade_date >= ?::DATE)
+              AND (?::DATE IS NULL OR trade_date <= ?::DATE)
+            ORDER BY trade_date
+            """,
+            [code, start, start, end, end],
+        )
+    )
+
+
+def wdb() -> sqlite3.Connection:
+    c = sqlite3.connect(DB)
+    c.execute("CREATE TABLE IF NOT EXISTS watchlist (ts_code TEXT PRIMARY KEY, added_at TEXT)")
+    return c
+
+
+@app.get("/api/watchlist")
+def watchlist():
+    c = wdb()
+    codes = [r[0] for r in c.execute("SELECT ts_code FROM watchlist ORDER BY added_at").fetchall()]
+    c.close()
+    if not codes:
+        return jsonify([])
+    ph = ",".join("?" * len(codes))
+    return jsonify(
+        rows(
+            f"""
+            SELECT ts_code, name, sw_l1, market, trade_date, close, ret, circ_mv, total_mv,
+                   turnover_rate, pe_ttm, pb, amount, is_limit_up, is_limit_down
+            FROM mart_stock_latest WHERE ts_code IN ({ph})
+            """,
+            codes,
+        )
+    )
+
+
+@app.post("/api/watchlist")
+def add_watch():
+    payload = request.get_json(silent=True) or {}
+    code = str(payload.get("ts_code", "")).strip()
+    if not code:
+        abort(400, "ts_code required")
+    c = wdb()
+    c.execute("INSERT OR IGNORE INTO watchlist VALUES (?, ?)", (code, datetime.now().isoformat()))
+    c.commit()
+    c.close()
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/watchlist/<code>")
+def del_watch(code: str):
+    c = wdb()
+    c.execute("DELETE FROM watchlist WHERE ts_code = ?", (code,))
+    c.commit()
+    c.close()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/health")
+def health():
+    try:
+        n = one("SELECT count(*) n FROM mart_market_day")["n"]
+        return jsonify({"ok": True, "rows": n})
+    except Exception as e:  # pragma: no cover
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ------------------------------------------------------------------ static SPA
+@app.get("/")
+def index():
+    if (DIST / "index.html").exists():
+        return send_from_directory(DIST, "index.html")
+    return jsonify({"app": "BreadthLab", "api": "/api/meta"})
+
+
+@app.get("/<path:path>")
+def static_files(path: str):
+    target = DIST / path
+    if target.is_file():
+        return send_from_directory(DIST, path)
+    if (DIST / "index.html").exists():
+        return send_from_directory(DIST, "index.html")
+    abort(404)
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=8000, debug=False, threaded=True)
