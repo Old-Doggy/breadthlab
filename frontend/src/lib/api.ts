@@ -206,6 +206,7 @@ export interface StaticPayload {
   distribution: Record<string, Distribution>;
   stocks: StockRow[];
   watch_pool: StockRow[];
+  stock_series?: Record<string, [string, number, number, number, number, number][]>;
   quality?: QualityReport;
 }
 
@@ -344,13 +345,18 @@ export const api = {
     return get<StockRow[]>("/api/stocks", { date, sector, limit });
   },
 
-  stockSeries: (code: string, start?: string, end?: string) =>
-    S
-      ? ok([])
-      : get<{ trade_date: string; close: number; adj_close: number; ret: number; circ_mv: number }[]>(
-          `/api/stock/${code}`,
-          { start, end },
-        ),
+  stockSeries: (code: string, start?: string, end?: string) => {
+    if (S) {
+      const raw = S.stock_series?.[code] ?? [];
+      return ok(
+        raw.map(([d, o, h, l, c, v]) => ({ trade_date: d, open: o, high: h, low: l, close: c, vol: v })),
+      );
+    }
+    return get<{ trade_date: string; open: number; high: number; low: number; close: number; vol: number }[]>(
+      `/api/stock/${code}`,
+      { start, end },
+    );
+  },
 
   watchlist: () => {
     if (S) {

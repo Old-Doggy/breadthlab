@@ -175,6 +175,32 @@ def build_payload(con) -> dict:
         except Exception:
             quality = {}
 
+    top_codes = [
+        r["ts_code"]
+        for r in rows(
+            "SELECT ts_code FROM feat_stock WHERE trade_date = (SELECT max(trade_date) FROM feat_stock) "
+            "ORDER BY amount DESC LIMIT 60"
+        )
+    ]
+    sample_codes = ["600519.SH", "300750.SZ", "688981.SH", "600036.SH", "002594.SZ", "300059.SZ"]
+    series_codes = sorted(set(top_codes) | set(sample_codes))
+    ph = ",".join(["?"] * len(series_codes))
+    series_rows = rows(
+        f"""
+        SELECT ts_code, trade_date::VARCHAR AS trade_date, open, high, low, close, vol
+        FROM feat_stock
+        WHERE ts_code IN ({ph})
+          AND trade_date >= (SELECT max(trade_date) - INTERVAL 190 DAY FROM feat_stock)
+        ORDER BY ts_code, trade_date
+        """,
+        series_codes,
+    )
+    stock_series: dict[str, list] = {}
+    for r in series_rows:
+        stock_series.setdefault(r["ts_code"], []).append(
+            [r["trade_date"], r["open"], r["high"], r["low"], r["close"], r["vol"]]
+        )
+
     payload = {
         "meta": meta,
         "quality": quality,
@@ -187,6 +213,7 @@ def build_payload(con) -> dict:
         "distribution": {meta["last_trade_date"]: {"bins": dist_rows, "stats": dist_stats}},
         "stocks": stocks,
         "watch_pool": watch_pool,
+        "stock_series": stock_series,
     }
     return _round(payload)
 

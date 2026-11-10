@@ -5,11 +5,61 @@ import { Search, Star, X } from "lucide-react";
 import { api, type StockRow } from "../lib/api";
 import { useUI } from "../store/ui";
 import { palettes, axisStyle, baseChart } from "../lib/theme";
-import { money, num, pct, ratio, trendClass } from "../lib/format";
+import { money, num, pct, ratio, shortDate, trendClass } from "../lib/format";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
 
 type SortKey = "ret" | "circ_mv" | "turnover_rate" | "amount";
+
+type Bar = { trade_date: string; open: number; high: number; low: number; close: number; vol: number };
+
+function klineOption(p: (typeof palettes)["dark"], bars: Bar[]) {
+  const dates = bars.map((b) => shortDate(b.trade_date));
+  const ohlc = bars.map((b) => [b.open, b.close, b.low, b.high]);
+  const vols = bars.map((b) => ({
+    value: b.vol,
+    itemStyle: { color: b.close >= b.open ? p.up : p.down, opacity: 0.55 },
+  }));
+  return {
+    ...baseChart(p),
+    grid: [
+      { left: 4, right: 6, top: 6, height: "60%", containLabel: true },
+      { left: 4, right: 6, top: "72%", height: "16%", containLabel: true },
+    ],
+    tooltip: { ...baseChart(p).tooltip, trigger: "axis", axisPointer: { type: "cross" } },
+    xAxis: [
+      {
+        type: "category",
+        data: dates,
+        gridIndex: 0,
+        ...axisStyle(p),
+        axisLabel: { show: false },
+        splitLine: { show: false },
+      },
+      {
+        type: "category",
+        data: dates,
+        gridIndex: 1,
+        ...axisStyle(p),
+        splitLine: { show: false },
+        axisLabel: { ...axisStyle(p).axisLabel, fontSize: 8, interval: Math.max(0, Math.floor(dates.length / 4)) },
+      },
+    ],
+    yAxis: [
+      { scale: true, gridIndex: 0, ...axisStyle(p), axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9 } },
+      { gridIndex: 1, axisLabel: { show: false }, splitLine: { show: false } },
+    ],
+    series: [
+      {
+        type: "candlestick",
+        data: ohlc,
+        itemStyle: { color: p.up, color0: p.down, borderColor: p.up, borderColor0: p.down },
+      },
+      { type: "bar", xAxisIndex: 1, yAxisIndex: 1, data: vols, barWidth: "62%" },
+    ],
+    dataZoom: [{ type: "inside", xAxisIndex: [0, 1], start: 55, end: 100 }],
+  } as never;
+}
 
 export default function Stocks() {
   const { t, i18n } = useTranslation();
@@ -34,6 +84,12 @@ export default function Stocks() {
     queryKey: ["stocks", d, sector],
     queryFn: () => api.stocks(d as string, sector || undefined),
     enabled: !!d,
+  });
+
+  const { data: series } = useQuery({
+    queryKey: ["stock-series", sel?.ts_code],
+    queryFn: () => api.stockSeries(sel!.ts_code),
+    enabled: !!sel,
   });
 
   const all = stocks ?? [];
@@ -270,6 +326,17 @@ export default function Stocks() {
                 </button>
               }
             >
+              {series && series.length > 1 ? (
+                <div className="mb-3 h-[210px]">
+                  <EChart option={klineOption(p, series)} />
+                </div>
+              ) : (
+                <div className="mb-3 rounded-md border border-dashed border-[var(--border)] px-2 py-3 text-center text-[10px] text-[var(--faint)]">
+                  {lang === "en"
+                    ? "K-line history is available for top-60 / sample stocks in static mode; full history needs the Flask API."
+                    : "静态模式下仅 Top60 / 示例股带 K 线；完整历史需本地 Flask 服务。"}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2.5">
                 {[
                   { k: lang === "en" ? "Return" : "当日收益", v: pct(sel.ret), tone: trendClass(sel.ret) },
