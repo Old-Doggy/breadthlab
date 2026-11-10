@@ -20,7 +20,7 @@ def test_meta(client):
     r = client.get("/api/meta")
     assert r.status_code == 200
     data = r.get_json()
-    assert data["last_trade_date"] == "2026-05-22"
+    assert data["last_trade_date"] >= "2026-11-10"
     assert data["n_stocks"] > 4000
 
 

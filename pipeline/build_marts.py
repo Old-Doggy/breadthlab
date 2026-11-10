@@ -49,33 +49,49 @@ WITH base AS (
     WHERE s.exchange IN ('SSE', 'SZSE')
       AND s.market IN ('主板', '创业板', '科创板')
       AND s.ret IS NOT NULL
+),
+feat AS (
+    SELECT *,
+           max(adj_close) OVER w252 AS hi252,
+           min(adj_close) OVER w252 AS lo252,
+           avg(adj_close) OVER w20  AS ma20,
+           avg(adj_close) OVER w60  AS ma60,
+           avg(adj_close) OVER w250 AS ma250,
+           count(adj_close) OVER w252 AS n_hist252,
+           (n_hist_all <= 5) AS is_new_stock,
+           (up_limit IS NOT NULL AND close >= up_limit * 0.999) AS is_limit_up,
+           (down_limit IS NOT NULL AND close <= down_limit * 1.001) AS is_limit_down,
+           (high = low) AS is_one_word,
+           (ret > 0) AS adv,
+           (ret < 0) AS dec,
+           (ret = 0) AS flat
+    FROM base
+    WINDOW w20  AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW),
+           w60  AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW),
+           w250 AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 249 PRECEDING AND CURRENT ROW),
+           w252 AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW)
+),
+flagged AS (
+    SELECT *,
+           sum(CASE WHEN is_limit_up THEN 0 ELSE 1 END)
+               OVER (PARTITION BY ts_code ORDER BY trade_date
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS lim_grp
+    FROM feat
 )
 SELECT *,
-       max(adj_close) OVER w252 AS hi252,
-       min(adj_close) OVER w252 AS lo252,
-       avg(adj_close) OVER w20  AS ma20,
-       avg(adj_close) OVER w60  AS ma60,
-       avg(adj_close) OVER w250 AS ma250,
-       count(adj_close) OVER w252 AS n_hist252,
-       (n_hist_all <= 5) AS is_new_stock,
-       (up_limit IS NOT NULL AND close >= up_limit * 0.999) AS is_limit_up,
-       (down_limit IS NOT NULL AND close <= down_limit * 1.001) AS is_limit_down,
-       (high = low) AS is_one_word,
-       (ret > 0) AS adv,
-       (ret < 0) AS dec,
-       (ret = 0) AS flat
-FROM base
-WINDOW w20  AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW),
-       w60  AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW),
-       w250 AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 249 PRECEDING AND CURRENT ROW),
-       w252 AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW)
+       CASE WHEN is_limit_up THEN
+           count(*) FILTER (WHERE is_limit_up)
+               OVER (PARTITION BY ts_code, lim_grp ORDER BY trade_date
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+       ELSE 0 END AS limit_streak
+FROM flagged
 """
 
 SQL_MARKET = """
 CREATE OR REPLACE TABLE mart_market_day AS
 WITH f AS (
     SELECT trade_date, ts_code, ret, circ_mv, prev_circ_mv, amount,
-           turnover_rate, adv, dec, flat, is_limit_up, is_limit_down,
+           turnover_rate, adv, dec, flat, is_limit_up, is_limit_down, limit_streak,
            adj_close, ma20, ma60, ma250, hi252, lo252, n_hist252
     FROM feat_stock
     WHERE NOT is_new_stock
@@ -108,6 +124,9 @@ ret_agg AS (
            avg(turnover_rate)                               AS turnover_rate,
            count(*) FILTER (WHERE is_limit_up)              AS limit_up_n,
            count(*) FILTER (WHERE is_limit_down)            AS limit_down_n,
+           max(CASE WHEN is_limit_up THEN limit_streak END)  AS max_streak_price,
+           count(*) FILTER (WHERE limit_streak >= 2)         AS streak_n_price,
+           count(*) FILTER (WHERE limit_streak = 1)          AS first_board_n_price,
            count(*) FILTER (WHERE adj_close >= hi252 AND n_hist252 >= 250) AS new_high_n,
            count(*) FILTER (WHERE adj_close <= lo252 AND n_hist252 >= 250) AS new_low_n,
            count(*) FILTER (WHERE adj_close > ma20)         AS above_ma20_n,
@@ -180,7 +199,10 @@ SELECT r.trade_date,
        (r.ew_ret - c.cw_ret)                                 AS ew_cw_gap,
        r.limit_up_n, r.limit_down_n,
        l.limit_up_list_n, l.limit_down_list_n, l.broken_n,
-       l.max_streak, l.streak_n, l.first_board_n, l.limit_fd_amount,
+       r.max_streak_price AS max_streak,
+       r.streak_n_price   AS streak_n,
+       r.first_board_n_price AS first_board_n,
+       l.limit_fd_amount,
        r.new_high_n, r.new_low_n,
        r.above_ma20_n::DOUBLE / nullif(r.n_valid, 0)         AS ma20_breadth,
        r.above_ma60_n::DOUBLE / nullif(r.n_valid, 0)         AS ma60_breadth,

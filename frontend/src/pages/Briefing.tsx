@@ -41,7 +41,7 @@ export default function Briefing() {
   const bottom = byBreadth.slice(-3).reverse();
   const contrib = (detail?.contributors ?? []).slice(0, 3);
   const regime = regimeOf(last);
-  const zhaban = last.broken_n ? last.broken_n / Math.max(1, (last.limit_up_n || 0) + last.broken_n) : 0;
+  const zhaban = last.broken_n != null ? last.broken_n / Math.max(1, (last.limit_up_n || 0) + last.broken_n) : null;
   const prev20 = rows.slice(-21, -1);
   const breadthDelta = (last.breadth - prev20.reduce((a, r) => a + r.breadth, 0) / Math.max(1, prev20.length)) * 100;
   const yearB = rows.slice(-250).filter((r) => r.breadth <= last.breadth).length;
@@ -157,14 +157,14 @@ export default function Briefing() {
             {ratio(bottom[0]?.breadth ?? null, 0)}（收益 {pct(bottom[0]?.ew_ret ?? null)}）。
           </li>
           <li>
-            ③ 涨停 {last.limit_up_n} / 跌停 {last.limit_down_n}，炸板率 {ratio(zhaban, 0)}，连板 {last.streak_n ?? 0} 家，最高 {last.max_streak ?? "—"} 板。
+            ③ 涨停 {last.limit_up_n} / 跌停 {last.limit_down_n}，炸板率 {zhaban === null ? "—" : ratio(zhaban, 0)}，连板 {last.streak_n ?? 0} 家，最高 {last.max_streak ?? "—"} 板。
           </li>
         </ul>
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-[#e4e7ec] pt-3 text-[9px] text-[#98a2b3]">
         <span>
-          炸板率 {ratio(zhaban, 0)} · 连板 {last.streak_n ?? 0} 家 · 最高 {last.max_streak ?? "—"} 板 · 新高 {last.new_high_n} / 新低 {last.new_low_n}
+          炸板率 {zhaban === null ? "—" : ratio(zhaban, 0)} · 连板 {last.streak_n ?? 0} 家 · 最高 {last.max_streak ?? "—"} 板 · 新高 {last.new_high_n} / 新低 {last.new_low_n}
         </span>
         <span>描述性分析，不构成投资建议 · BreadthLab v0.1</span>
       </div>

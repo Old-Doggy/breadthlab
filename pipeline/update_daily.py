@@ -25,7 +25,7 @@ import pandas as pd
 from . import settings
 from .db import session
 
-DATASETS = ["daily", "daily_basic", "adj_factor", "stk_limit", "limit_list_d", "moneyflow"]
+DATASETS = ["daily", "daily_basic", "adj_factor", "stk_limit", "limit_list_d", "moneyflow", "margin"]
 
 
 def log(msg: str) -> None:
@@ -52,6 +52,60 @@ def open_days(con: duckdb.DuckDBPyConnection, start: str, end: str) -> list[str]
     return [r[0] for r in rows]
 
 
+def ensure_calendar(pro, con: duckdb.DuckDBPyConnection, end: str) -> None:
+    """本地 trade_cal 也停在快照日，先向 Tushare 续上，否则会判定“无缺口”。"""
+    maxd = con.execute("SELECT max(cal_date) FROM core_trade_cal").fetchall()[0][0]
+    if maxd >= end:
+        return
+    df = pro.trade_cal(exchange="SSE", start_date=str(maxd), end_date=str(end))
+    if df is None or df.empty:
+        return
+    df = df.copy()
+    df["cal_date"] = df["cal_date"].astype(str)
+    df["pretrade_date"] = df["pretrade_date"].astype(str)
+    con.register("tmp_cal", df[["cal_date", "pretrade_date", "is_open"]])
+    con.execute(
+        """
+        INSERT INTO core_trade_cal (cal_date, trade_date, pretrade_date, is_open)
+        SELECT cal_date, strptime(cal_date, '%Y%m%d')::DATE, pretrade_date, is_open
+        FROM tmp_cal t
+        WHERE NOT EXISTS (SELECT 1 FROM core_trade_cal c WHERE c.cal_date = t.cal_date)
+        """
+    )
+    con.unregister("tmp_cal")
+    log(f"calendar extended to {con.execute('SELECT max(cal_date) FROM core_trade_cal').fetchall()[0][0]}")
+
+
+def update_indices(pro, con: duckdb.DuckDBPyConnection, start: str, end: str) -> int:
+    total = 0
+    for code in ["000300.SH", "000905.SH", "000852.SH", "000001.SH"]:
+        try:
+            df = pro.index_daily(ts_code=code, start_date=start, end_date=end)
+        except Exception as e:
+            log(f"index {code} failed: {e}")
+            continue
+        if df is None or df.empty:
+            continue
+        df = df.copy()
+        df["trade_date"] = pd.to_datetime(df["trade_date"].astype(str), format="%Y%m%d").dt.date
+        con.register("tmp_idx", df)
+        n = con.execute(
+            """
+            INSERT INTO core_index_day
+            SELECT ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount
+            FROM tmp_idx t
+            WHERE NOT EXISTS (
+                SELECT 1 FROM core_index_day c WHERE c.ts_code = t.ts_code AND c.trade_date = t.trade_date
+            )
+            """
+        ).fetchall()
+        total += (n[0][0] if n else 0)
+        con.unregister("tmp_idx")
+        time.sleep(0.3)
+    log(f"indices inserted: {total}")
+    return total
+
+
 def last_loaded(con: duckdb.DuckDBPyConnection) -> str:
     v = con.execute("SELECT max(trade_date) FROM core_stock_day").fetchall()[0][0]
     return v.strftime("%Y%m%d")
@@ -70,20 +124,23 @@ def fetch(pro, ds: str, day: str) -> pd.DataFrame:
         return pro.limit_list_d(trade_date=day)
     if ds == "moneyflow":
         return pro.moneyflow(trade_date=day)
+    if ds == "margin":
+        return pro.margin(trade_date=day)
     raise ValueError(ds)
 
 
 def quality(con: duckdb.DuckDBPyConnection, day: str) -> tuple[bool, list[str]]:
     msgs: list[str] = []
+    d = datetime.strptime(day, "%Y%m%d").date()
     q = con.execute(
         """
         SELECT count(*) n,
-               count(circ_mv) FILTER (WHERE circ_mv IS NOT NULL) n_mv,
-               count(adj_factor) FILTER (WHERE adj_factor IS NOT NULL) n_adj,
+               count(*) FILTER (WHERE circ_mv IS NOT NULL) n_mv,
+               count(*) FILTER (WHERE adj_factor IS NOT NULL) n_adj,
                count(*) FILTER (WHERE abs(pct_chg) > 21) n_bad
-        FROM core_stock_day WHERE trade_date = ?::DATE
+        FROM core_stock_day WHERE trade_date = ?
         """,
-        [day],
+        [d],
     ).fetchall()[0]
     n, n_mv, n_adj, n_bad = q
     if n < 3000:
@@ -163,6 +220,18 @@ def insert(con: duckdb.DuckDBPyConnection, ds: str, df: pd.DataFrame, day: str) 
             WHERE NOT EXISTS (SELECT 1 FROM core_flow_day c WHERE c.ts_code=t.ts_code AND c.trade_date=t.trade_date)
             """
         )
+    elif ds == "margin":
+        con.execute(
+            """
+            INSERT INTO core_margin_day
+            SELECT trade_date, exchange_id, rzye, rzmre, rzche, rqye, rzrqye
+            FROM tmp_df t
+            WHERE NOT EXISTS (
+                SELECT 1 FROM core_margin_day c
+                WHERE c.trade_date = t.trade_date AND c.exchange_id = t.exchange_id
+            )
+            """
+        )
     con.unregister("tmp_df")
     after = con.execute("SELECT count(*) FROM core_stock_day").fetchall()[0][0]
     return after - before
@@ -174,18 +243,29 @@ def run(target: str | None = None, dry: bool = False) -> dict:
     with session() as con:
         last = last_loaded(con)
         end = target or date.today().strftime("%Y%m%d")
-        days = open_days(con, last, end)
+        pro = None
+        if not dry:
+            pro = tushare_pro()
+            ensure_calendar(pro, con, end)
+            days = open_days(con, last, end)
+        else:
+            pro = tushare_pro()
+            cal = pro.trade_cal(exchange="SSE", start_date=last, end_date=end)
+            days = sorted(
+                cal.loc[(cal["is_open"] == 1) & (cal["cal_date"].astype(str) > last), "cal_date"]
+                .astype(str)
+                .tolist()
+            )
         # 去掉已完整加载的当天
         days = [d for d in days if d > last]
         report["from"] = last
         report["to"] = end
         report["pending"] = days
-        log(f"last={last} pending={days}")
+        log(f"last={last} pending={len(days)} days")
         if dry or not days:
             report["duration_sec"] = round(time.time() - started, 1)
             return report
 
-        pro = tushare_pro()
         for day in days:
             day_started = time.time()
             inserted = {}
@@ -207,6 +287,12 @@ def run(target: str | None = None, dry: bool = False) -> dict:
                 log(f"quality gate failed: {msgs}")
                 break
             report["days"].append({"date": day, "inserted": inserted, "sec": round(time.time() - day_started, 1)})
+        if report["days"] and pro is not None:
+            try:
+                update_indices(pro, con, last, end)
+            except Exception as e:
+                report["warnings"].append(f"index update failed: {e}")
+                log(f"index update failed: {e}")
         con.execute("CHECKPOINT")
 
     report["duration_sec"] = round(time.time() - started, 1)

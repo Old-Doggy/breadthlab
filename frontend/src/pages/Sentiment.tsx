@@ -188,7 +188,7 @@ export default function Sentiment() {
 
   if (!rows.length) return <div className="skeleton h-[600px] w-full" />;
 
-  const zhaban = last.broken_n ? last.broken_n / Math.max(1, (last.limit_up_n || 0) + last.broken_n) : 0;
+  const zhaban = last.broken_n != null ? last.broken_n / Math.max(1, (last.limit_up_n || 0) + last.broken_n) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -205,7 +205,7 @@ export default function Sentiment() {
           { k: lang === "en" ? "Limit-up" : "涨停家数", v: num(last.limit_up_n), sub: lang === "en" ? "price vs stk_limit" : "收盘价 ≥ 涨停价", tone: "up" },
           { k: lang === "en" ? "Limit-down" : "跌停家数", v: num(last.limit_down_n), sub: lang === "en" ? "price vs stk_limit" : "收盘价 ≤ 跌停价", tone: "down" },
           { k: lang === "en" ? "Max streak" : "最高连板", v: `${last.max_streak ?? "—"}`, sub: `${last.streak_n ?? 0} ${lang === "en" ? "with 2+ boards" : "家连板"}` },
-          { k: lang === "en" ? "Broken rate" : "炸板率", v: ratio(zhaban, 0), sub: `${last.broken_n ?? 0} ${lang === "en" ? "broken" : "家炸板"}` },
+          { k: lang === "en" ? "Broken rate" : "炸板率", v: zhaban === null ? "—" : ratio(zhaban, 0), sub: `${last.broken_n ?? "—"} ${lang === "en" ? "broken" : "家炸板"}` },
         ].map((s) => (
           <div key={s.k} className="card card-pad">
             <MicroLabel>{s.k}</MicroLabel>
