@@ -21,6 +21,7 @@ try {
   & $py -m pipeline.export_static 2>&1 | Tee-Object -FilePath $log -Append
   if ($LASTEXITCODE -ne 0) { throw "export_static failed ($LASTEXITCODE)" }
 
+  & (Join-Path $PSScriptRoot "briefing.ps1") 2>&1 | Tee-Object -FilePath $log -Append
   Write-Host "[update] OK -> frontend/dist/BreadthLab.html"
 } catch {
   Write-Host "[update] FAILED: $_"

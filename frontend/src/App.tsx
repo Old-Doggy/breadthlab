@@ -8,6 +8,7 @@ import Stocks from "./pages/Stocks";
 import Sentiment from "./pages/Sentiment";
 import Watchlist from "./pages/Watchlist";
 import About from "./pages/About";
+import Briefing from "./pages/Briefing";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="sentiment" element={<Sentiment />} />
         <Route path="watchlist" element={<Watchlist />} />
         <Route path="about" element={<About />} />
+        <Route path="briefing" element={<Briefing />} />
       </Route>
     </Routes>
   );

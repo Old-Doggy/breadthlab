@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, FileText, Minus } from "lucide-react";
 import { api } from "../lib/api";
 import { useUI } from "../store/ui";
 import { palettes } from "../lib/theme";
@@ -148,7 +148,7 @@ export default function Today() {
       {/* hero */}
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-12 xl:col-span-7">
-          <div className="card card-pad relative overflow-hidden h-full" style={{ padding: "22px 24px" }}>
+          <div className="card relative h-full overflow-hidden p-[18px] md:p-[22px_24px]">
             <div className="dotgrid pointer-events-none absolute inset-0 opacity-[0.35]" />
             <div className="relative flex flex-wrap items-center gap-3">
               <span className="mono text-[13px] text-[var(--text-2)]">{last.trade_date}</span>
@@ -169,16 +169,25 @@ export default function Today() {
                 {breadthPctile}
                 {lang === "en" ? "th breadth pct." : "% 广度分位"}
               </span>
+              <a
+                href="#/briefing"
+                target="_blank"
+                rel="noreferrer"
+                className="pill ml-auto h-[24px] gap-1 border-[var(--border)] text-[var(--text-2)] transition-colors hover:text-[var(--accent)]"
+              >
+                <FileText size={11} />
+                {lang === "en" ? "Briefing" : "每日简报"}
+              </a>
             </div>
 
             <h1
-              className="relative mt-5 max-w-[40ch] text-[19px] font-semibold leading-[1.6] tracking-tight text-[var(--text)]"
+              className="relative mt-4 max-w-[40ch] text-[16.5px] font-semibold leading-[1.55] tracking-tight text-[var(--text)] md:mt-5 md:text-[19px] md:leading-[1.6]"
               style={{ textWrap: "balance" }}
             >
               {verdict(last, lang)}
             </h1>
 
-            <div className="relative mt-6 grid grid-cols-3 gap-4">
+            <div className="relative mt-5 grid grid-cols-3 gap-2 md:mt-6 md:gap-4">
               {[
                 { k: lang === "en" ? "Adv / Dec" : "涨 / 跌", v: `${last.n_adv} / ${last.n_dec}` },
                 { k: t("metric.amount"), v: money(last.amount) },
@@ -189,7 +198,7 @@ export default function Today() {
               ].map((s) => (
                 <div key={s.k}>
                   <MicroLabel>{s.k}</MicroLabel>
-                  <div className="mono mt-1.5 text-[15px] font-medium text-[var(--text)]">{s.v}</div>
+                  <div className="mono mt-1 text-[12.5px] font-medium text-[var(--text)] md:mt-1.5 md:text-[15px]">{s.v}</div>
                 </div>
               ))}
             </div>
@@ -236,7 +245,7 @@ export default function Today() {
             padded={false}
             bodyClass="pt-0"
           >
-            <div className="h-[176px] pr-3">
+            <div className="h-[150px] pr-2 md:h-[176px] md:pr-3">
               <EChart option={breadthArea(p, last60)} />
             </div>
           </Card>
@@ -279,7 +288,7 @@ export default function Today() {
             padded={false}
             bodyClass="pt-1"
           >
-            <div className="h-[368px] px-2 pb-2">
+            <div className="h-[300px] px-1 pb-1 md:h-[368px] md:px-2 md:pb-2">
               <EChart option={returnBreadth(p, last120, lang)} />
             </div>
           </Card>
@@ -298,7 +307,7 @@ export default function Today() {
                 const half = (Math.abs(c.contrib) / maxAbs) * 50;
                 const positive = c.contrib >= 0;
                 return (
-                  <div key={c.ts_code} className="group grid grid-cols-[86px_1fr_52px] items-center gap-2.5 rounded-md px-2 py-[6px] hover:bg-[var(--panel-2)]">
+                  <div key={c.ts_code} className="group grid grid-cols-[70px_1fr_46px] items-center gap-2 md:grid-cols-[86px_1fr_52px] md:gap-2.5 rounded-md px-2 py-[6px] hover:bg-[var(--panel-2)]">
                     <div className="min-w-0">
                       <div className="truncate text-[12px] leading-tight text-[var(--text)]">{c.name}</div>
                       <div className="truncate text-[9.5px] leading-tight text-[var(--faint)]">{c.sw_l1}</div>
@@ -353,7 +362,7 @@ export default function Today() {
             padded={false}
             bodyClass="pt-0"
           >
-            <div className="h-[336px] px-2 pb-2">
+            <div className="h-[280px] px-1 pb-1 md:h-[336px] md:px-2 md:pb-2">
               {sectors.length ? <EChart option={sectorBubble(p, sectors, lang)} /> : <Skeleton h={320} />}
             </div>
           </Card>
@@ -375,7 +384,7 @@ export default function Today() {
             padded={false}
             bodyClass="pt-0"
           >
-            <div className="h-[336px] px-2 pb-2">
+            <div className="h-[280px] px-1 pb-1 md:h-[336px] md:px-2 md:pb-2">
               {dist?.bins?.length ? (
                 <EChart option={distributionChart(p, dist.bins, dist.stats, lang)} />
               ) : (
@@ -398,12 +407,12 @@ export default function Today() {
             <div className="flex flex-col px-4 pb-3">
               {boardTop.map((s) => (
                 <div key={s.sw_l1} className="flex items-center gap-3 border-b border-[var(--border)] py-[9px] last:border-0">
-                  <span className="w-[92px] truncate text-[12px] text-[var(--text-2)]">{s.sw_l1}</span>
+                  <span className="w-[68px] truncate text-[11.5px] text-[var(--text-2)] md:w-[92px] md:text-[12px]">{s.sw_l1}</span>
                   <div className="h-[4px] flex-1 rounded-full bg-[var(--panel-3)]">
                     <div className="h-full rounded-full" style={{ width: `${s.breadth * 100}%`, background: p.accent, opacity: 0.75 }} />
                   </div>
-                  <span className="mono w-[42px] text-right text-[11.5px] text-[var(--text)]">{ratio(s.breadth, 0)}</span>
-                  <span className={`mono w-[52px] text-right text-[11px] ${trendClass(s.ew_ret)}`}>{pct(s.ew_ret)}</span>
+                  <span className="mono w-[36px] text-right text-[11px] text-[var(--text)] md:w-[42px] md:text-[11.5px]">{ratio(s.breadth, 0)}</span>
+                  <span className={`mono w-[46px] text-right text-[10.5px] md:w-[52px] md:text-[11px] ${trendClass(s.ew_ret)}`}>{pct(s.ew_ret)}</span>
                 </div>
               ))}
             </div>
@@ -426,7 +435,7 @@ export default function Today() {
                 const w = Math.min(100, (Math.abs(tilt) / maxTilt) * 100);
                 return (
                   <div key={s.sw_l1} className="flex items-center gap-3 border-b border-[var(--border)] py-[9px] last:border-0">
-                    <span className="w-[92px] truncate text-[12px] text-[var(--text-2)]">{s.sw_l1}</span>
+                    <span className="w-[68px] truncate text-[11.5px] text-[var(--text-2)] md:w-[92px] md:text-[12px]">{s.sw_l1}</span>
                     <div className="relative h-[4px] flex-1 overflow-hidden rounded-full bg-[var(--panel-3)]">
                       <div
                         className="h-full rounded-full"

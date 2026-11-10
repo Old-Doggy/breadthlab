@@ -240,3 +240,34 @@ body {
   animation: shimmer 1.4s linear infinite;
   border-radius: 8px;
 }
+
+/* ============================================================ print / PDF */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .briefing {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .card {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+}
+

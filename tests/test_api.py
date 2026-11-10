@@ -4,6 +4,9 @@ from __future__ import annotations
 import pytest
 
 from backend.main import app
+from pipeline import settings
+
+pytestmark = pytest.mark.skipif(not settings.LAKE.exists(), reason="lake not built")
 
 
 @pytest.fixture()

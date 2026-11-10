@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $script = Join-Path $root "scripts\update.ps1"
 
-$action = New-ScheduledTaskAction -Execute "pwsh.exe" `
+$action = New-ScheduledTaskAction -Execute "powershell.exe" `
   -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$script`"" `
   -WorkingDirectory $root
 

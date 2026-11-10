@@ -36,7 +36,22 @@ BreadthLab 用 7 个页面把这些问题变成可交互的证据链。
 | **情绪极端** | 涨停潮是真的还是假的？ | 涨跌停家数 + 连板梯队 + 新高新低 + 两融 |
 | **自选组合** | 我的组合被什么带动？ | 组合收益/贡献分解/上涨占比 |
 
-完整截图见 `docs/screenshots/`。
+'### 每日简报（PDF / PNG）
+
+`#/briefing` 是打印优化的 A4 单页：一句话结论 + 6 个 KPI + 两张核心图 + 行业强弱 + 最大贡献个股 + 今日三条。
+
+```powershell
+pwsh -File scripts\briefing.ps1
+# -> data/snapshots/YYYYMMDD/briefing.pdf / briefing.png
+```
+
+简报使用 light 主题、A4 版式，可直接贴进周报或打印。
+
+### 移动端
+
+`< 768px` 自动切换为底部导航 + 单列布局，图表高度、KPI 字号、表格列宽都会收缩；已在 390×844 下逐页校对。
+
+完整截图见 `docs/screenshots/`。'
 
 ---
 
@@ -161,8 +176,8 @@ breadthlab/
 
 ## 7. Roadmap
 
-- [ ] 每日简报自动生成 PDF/PNG（Playwright）
+- [x] 每日简报自动生成 PDF/PNG（无头 Edge）
 - [ ] 行业映射升级为申万 PIT 成员（`index_member_all`）
 - [ ] 自选组合的持仓成本/盈亏与 Brinson 简化归因
 - [ ] 数据质量看板（最近 30 天门禁结果、源间对账）
-- [ ] 移动端布局细化
+- [x] 移动端布局（底部导航 + 单列）
