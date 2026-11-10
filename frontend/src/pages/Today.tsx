@@ -10,6 +10,8 @@ import { breadthArea, distributionChart, returnBreadth, sectorBubble } from "../
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
 import { Kpi } from "../components/Kpi";
+import { Link } from "react-router-dom";
+import { Zap } from "lucide-react";
 
 function Skeleton({ h = 320 }: { h?: number }) {
   return <div className="skeleton w-full" style={{ height: h }} />;
@@ -88,6 +90,7 @@ export default function Today() {
         last.hs300_ret === null || last.hs300_ret === undefined
           ? `${t("metric.cw")} ${pct(last.cw_ret)}`
           : `${t("metric.index")} ${pct(last.hs300_ret)}`,
+      to: "/market",
       spark: series.slice(-21).map((r) => r.ew_ret),
       sparkTone: tone as "up" | "down",
     },
@@ -96,6 +99,7 @@ export default function Today() {
       value: ratio(last.breadth, 0),
       tone: (last.breadth >= 0.5 ? "up" : "down") as "up" | "down",
       sub: `${last.n_adv} ↑ / ${last.n_dec} ↓ · ${lang === "en" ? `${ord(breadthPctile)} pct` : `${breadthPctile}分位`}`,
+      to: "/regime",
       spark: series.slice(-21).map((r) => r.breadth),
       sparkTone: "accent" as const,
     },
@@ -104,6 +108,7 @@ export default function Today() {
       value: `${num(last.limit_up_n)}`,
       tone: "up" as const,
       sub: `${t("metric.limitDown")} ${num(last.limit_down_n)}${last.broken_n ? ` · ${lang === "en" ? "broken" : "炸板"} ${num(last.broken_n)}` : ""}`,
+      to: "/sentiment",
       spark: series.slice(-21).map((r) => r.limit_up_n),
       sparkTone: "up" as const,
     },
@@ -112,6 +117,7 @@ export default function Today() {
       value: money(last.amount),
       tone: "neutral" as const,
       sub: `${t("common.sample")} ${num(last.n_valid)} ${lang === "en" ? "stocks" : "只"}`,
+      to: "/market",
       spark: series.slice(-21).map((r) => r.amount),
       sparkTone: "accent" as const,
     },
@@ -120,6 +126,7 @@ export default function Today() {
       value: `${(last.csd * 100).toFixed(2)}pp`,
       tone: "neutral" as const,
       sub: `${t("metric.median")} ${pct(last.med_ret)}`,
+      to: "/stocks",
       spark: series.slice(-21).map((r) => r.csd),
       sparkTone: "accent" as const,
     },
@@ -128,6 +135,7 @@ export default function Today() {
       value: `${(last.top10_contrib_pct ?? 0).toFixed(2)}pp`,
       tone: "neutral" as const,
       sub: `HHI ${num(last.hhi)} · ${lang === "en" ? "share" : "占比"} ${ratio(last.top10_share, 0)}`,
+      to: "/market",
       spark: series.slice(-21).map((r) => r.top10_contrib_pct),
       sparkTone: "up" as const,
     },
@@ -255,7 +263,26 @@ export default function Today() {
       {/* kpis */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {kpis.map((k) => (
-          <Kpi key={k.label} {...k} />
+          <Link key={k.label} to={k.to} className="block transition-transform hover:-translate-y-[1px]">
+            <Kpi {...k} />
+          </Link>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-[7px] text-[10.5px] text-[var(--muted)]">
+        <span className="flex items-center gap-1 text-[var(--warn)]">
+          <Zap size={11} /> {lang === "en" ? "Notable" : "异动"}
+        </span>
+        {[
+          `${lang === "en" ? "Limit-ups" : "涨停"} ${num(last.limit_up_n)} · ${(last.limit_up_n / Math.max(1, avg(last20.map((r) => r.limit_up_n)))).toFixed(1)}× 20d`,
+          `${lang === "en" ? "Max streak" : "最高连板"} ${last.max_streak ?? "—"}`,
+          `${lang === "en" ? "Turnover vs 20d" : "成交额较 20 日"} ${(
+            (last.amount / Math.max(1, avg(last20.map((r) => r.amount))) - 1) * 100 >= 0 ? "+" : ""
+          )}${((last.amount / Math.max(1, avg(last20.map((r) => r.amount))) - 1) * 100).toFixed(0)}%`,
+        ].map((a) => (
+          <span key={a} className="rounded-md bg-[var(--panel-3)] px-2 py-[2px] text-[10px] text-[var(--text-2)]">
+            {a}
+          </span>
         ))}
       </div>
 
