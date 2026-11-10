@@ -89,6 +89,8 @@ export interface SectorDay {
   cw_ret: number;
   q25: number;
   q75: number;
+  q10?: number;
+  q90?: number;
   iqr: number;
   csd: number;
   amount: number;

@@ -247,6 +247,46 @@ export default function Sectors() {
                 </div>
               ))}
             </div>
+
+            {selRow ? (
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-[9px] text-[var(--faint)]">
+                  <span className="mono">q10 {pct(selRow.q10 ?? null)}</span>
+                  <span>{lang === "en" ? "inside distribution · q10–q90" : "行业内分布 · q10–q90"}</span>
+                  <span className="mono">q90 {pct(selRow.q90 ?? null)}</span>
+                </div>
+                <div className="relative mt-1.5 h-[6px] rounded-full bg-[var(--panel-3)]">
+                  <div
+                    className="absolute inset-y-0 rounded-full bg-[var(--accent)]/25"
+                    style={{
+                      left: `${Math.max(0, Math.min(100, (((selRow.q10 ?? 0) * 100 + 11) / 22) * 100))}%`,
+                      width: `${Math.max(
+                        2,
+                        Math.min(
+                          100,
+                          ((((selRow.q90 ?? 0) - (selRow.q10 ?? 0)) * 100) / 22) * 100,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                  <div
+                    className="absolute inset-y-0 rounded-full bg-[var(--accent)]/60"
+                    style={{
+                      left: `${Math.max(0, Math.min(100, (((selRow.q25 ?? 0) * 100 + 11) / 22) * 100))}%`,
+                      width: `${Math.max(
+                        1,
+                        Math.min(100, ((((selRow.q75 ?? 0) - (selRow.q25 ?? 0)) * 100) / 22) * 100),
+                      )}%`,
+                    }}
+                  />
+                  <div
+                    className="absolute -top-[2px] h-[10px] w-[2px] rounded bg-[var(--text)]"
+                    style={{ left: `${Math.max(0, Math.min(99, (((selRow.med_ret ?? 0) * 100 + 11) / 22) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-4 space-y-1.5 text-[11px] leading-relaxed text-[var(--muted)]">
               <p>
                 {lang === "en"

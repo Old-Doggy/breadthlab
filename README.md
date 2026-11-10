@@ -198,3 +198,9 @@ breadthlab/
 - [ ] 自选组合的持仓成本/盈亏与 Brinson 简化归因
 - [ ] 数据质量看板（最近 30 天门禁结果、源间对账）
 - [x] 移动端布局（底部导航 + 单列）
+
+---
+
+## 7. License
+
+MIT © 2026 BreadthLab contributors

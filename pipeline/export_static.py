@@ -68,7 +68,7 @@ def build_payload(con) -> dict:
     sectors_rows = rows(
         """
         SELECT trade_date::VARCHAR AS trade_date, sw_l1, n, n_adv, n_dec, breadth, ew_ret, cw_ret,
-               med_ret, q25, q75, iqr, csd, amount, turnover_rate, limit_up_n
+               med_ret, q10, q25, q75, q90, iqr, csd, amount, turnover_rate, limit_up_n
         FROM mart_sector_day
         WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 3 YEAR FROM mart_sector_day)
         ORDER BY trade_date, sw_l1
