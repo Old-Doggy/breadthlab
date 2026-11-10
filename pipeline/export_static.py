@@ -235,6 +235,28 @@ def build_payload(con) -> dict:
         except Exception:
             reconcile = {}
 
+    pe_rows = rows(
+        f"""
+        SELECT ts_code, pe_ttm
+        FROM feat_stock
+        WHERE ts_code IN ({ph})
+          AND trade_date >= (SELECT max(trade_date) - INTERVAL 3 YEAR FROM feat_stock)
+          AND pe_ttm > 0
+        ORDER BY ts_code, trade_date
+        """,
+        series_codes,
+    )
+    pe_hist: dict[str, list] = {}
+    for r in pe_rows:
+        pe_hist.setdefault(r["ts_code"], []).append(r["pe_ttm"])
+    pe_percentile = {}
+    for code, vals in pe_hist.items():
+        last = vals[-1]
+        pe_percentile[code] = {
+            "pe": round(last, 2),
+            "pct": round(100 * sum(v <= last for v in vals) / len(vals)),
+            "n": len(vals),
+        }
     payload = {
         "meta": meta,
         "quality": quality,
@@ -251,6 +273,7 @@ def build_payload(con) -> dict:
         "stocks": stocks,
         "watch_pool": watch_pool,
         "stock_series": stock_series,
+        "pe_percentile": pe_percentile,
     }
     return _round(payload)
 

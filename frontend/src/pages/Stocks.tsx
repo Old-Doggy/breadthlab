@@ -93,6 +93,12 @@ export default function Stocks() {
     enabled: !!sel,
   });
 
+  const { data: valuation } = useQuery({
+    queryKey: ["valuation", sel?.ts_code],
+    queryFn: () => api.valuation(sel!.ts_code),
+    enabled: !!sel,
+  });
+
   const all = stocks ?? [];
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -344,12 +350,13 @@ export default function Stocks() {
                   { k: lang === "en" ? "Float cap" : "流通市值", v: `${(sel.circ_mv / 1e4).toFixed(0)}亿` },
                   { k: lang === "en" ? "Turnover" : "换手率", v: `${(sel.turnover_rate || 0).toFixed(2)}%` },
                   { k: lang === "en" ? "Amount" : "成交额", v: money(sel.amount) },
-                  { k: "PE(TTM)", v: sel.pe_ttm ? sel.pe_ttm.toFixed(1) : "—" },
+                  { k: "PE(TTM)", v: sel.pe_ttm ? sel.pe_ttm.toFixed(1) : "—", sub: valuation ? `${lang === "en" ? "3y pct" : "3年分位"} ${valuation.pct}%` : undefined },
                   { k: "PB", v: sel.pb ? sel.pb.toFixed(2) : "—" },
                 ].map((x) => (
                   <div key={x.k} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2">
                     <MicroLabel>{x.k}</MicroLabel>
                     <div className={`mono mt-1 text-[14px] font-medium ${x.tone || ""}`}>{x.v}</div>
+                    {x.sub ? <div className="mt-0.5 text-[9px] text-[var(--faint)]">{x.sub}</div> : null}
                   </div>
                 ))}
               </div>

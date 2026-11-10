@@ -173,6 +173,12 @@ export interface UpdateLog {
   warnings: number;
 }
 
+export interface PePercentile {
+  pe: number;
+  pct: number;
+  n: number;
+}
+
 export interface Reconcile {
   generated_at?: string;
   stocks?: number;
@@ -235,6 +241,7 @@ export interface StaticPayload {
   stocks: StockRow[];
   watch_pool: StockRow[];
   stock_series?: Record<string, [string, number, number, number, number, number][]>;
+  pe_percentile?: Record<string, PePercentile>;
   limit_quality?: LimitQuality[];
   updates?: UpdateLog[];
   reconcile?: Reconcile;
@@ -380,6 +387,11 @@ export const api = {
       return ok(rows.slice(0, limit));
     }
     return get<StockRow[]>("/api/stocks", { date, sector, limit });
+  },
+
+  valuation: (code: string) => {
+    if (S) return ok(S.pe_percentile?.[code] ?? null);
+    return get<PePercentile | null>(`/api/valuation/${code}`);
   },
 
   stockSeries: (code: string, start?: string, end?: string) => {

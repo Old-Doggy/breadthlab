@@ -397,6 +397,28 @@ def reconcile():
     )
 
 
+@app.get("/api/valuation/<code>")
+def valuation(code: str):
+    data = rows(
+        """
+        SELECT pe_ttm
+        FROM feat_stock
+        WHERE ts_code = ?
+          AND trade_date >= (SELECT max(trade_date) - INTERVAL 3 YEAR FROM feat_stock)
+          AND pe_ttm > 0
+        ORDER BY trade_date
+        """,
+        [code],
+    )
+    if not data:
+        return jsonify({})
+    vals = [r["pe_ttm"] for r in data]
+    last = vals[-1]
+    return jsonify(
+        {"pe": round(last, 2), "pct": round(100 * sum(v <= last for v in vals) / len(vals)), "n": len(vals)}
+    )
+
+
 @app.get("/api/quality")
 def quality():
     p = META / "quality" / "latest.json"
