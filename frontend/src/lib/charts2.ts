@@ -15,9 +15,10 @@ export const regimeColor = (k: RegimeKey): string =>
 
 
 const xs = (rows: MarketDay[]) => rows.map((r) => shortDate(r.trade_date));
+const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
 
 /** 集中度：Top10 贡献占比 + 涨幅前 5% 股票的收益份额。 */
-export function concentrationChart(p: Palette, rows: MarketDay[]): EChartsOption {
+export function concentrationChart(p: Palette, rows: MarketDay[], lang = "zh"): EChartsOption {
   const roll = (vals: number[], w = 20) =>
     vals.map((_, i) => {
       if (i < w - 1) return null;
@@ -40,9 +41,9 @@ export function concentrationChart(p: Palette, rows: MarketDay[]): EChartsOption
         const t10 = roll(top10)[i];
         const gn = roll(gain)[i];
         return `<div style="font-family:monospace;font-size:11px;color:${p.muted}">${r.trade_date}</div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>Top10 波动占比</span><b>${top10[i].toFixed(0)}%</b></div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>20日均值</span><b>${t10 === null ? "—" : t10.toFixed(0) + "%"}</b></div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>涨幅前5%份额</span><b>${gn === null ? "—" : gn.toFixed(0) + "%"}</b></div>
+          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "Top10 波动占比", "Top10 share")}</span><b>${top10[i].toFixed(0)}%</b></div>
+          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "20日均值", "20d avg")}</span><b>${t10 === null ? "—" : t10.toFixed(0) + "%"}</b></div>
+          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "涨幅前5%份额", "Top 5% gain share")}</span><b>${gn === null ? "—" : gn.toFixed(0) + "%"}</b></div>
           <div style="display:flex;gap:16px;justify-content:space-between"><span>HHI</span><b>${(r.hhi || 0).toFixed(0)}</b></div>`;
       },
     },
@@ -220,8 +221,8 @@ export function regimeScatter(
           <div style="font-family:monospace;font-size:11px;color:${p.muted};margin-bottom:5px">${q.data.trade_date}</div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>等权收益</span><b style="color:${ret >= 0 ? p.up : p.down}">${ret.toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>上涨占比</span><b>${breadth.toFixed(0)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>分化度</span><b>${(csd * 100).toFixed(2)}pp</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>状态</span><b>${q.seriesName}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "分化度", "Dispersion")}</span><b>${(csd * 100).toFixed(2)}pp</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "状态", "Regime")}</span><b>${q.seriesName}</b></div>
         </div>`;
       },
     },
@@ -282,7 +283,7 @@ export function regimeScatter(
   };
 }
 
-export function dispersionChart(p: Palette, rows: MarketDay[]): EChartsOption {
+export function dispersionChart(p: Palette, rows: MarketDay[], lang = "zh"): EChartsOption {
   return {
     ...baseChart(p),
     grid: { left: 4, right: 8, top: 14, bottom: 18, containLabel: true },
@@ -293,9 +294,9 @@ export function dispersionChart(p: Palette, rows: MarketDay[]): EChartsOption {
         const arr = params as { dataIndex: number }[];
         const r = rows[arr[0].dataIndex];
         return `<div style="font-family:monospace;font-size:11px;color:${p.muted}">${r.trade_date}</div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>横截面标准差</span><b>${(r.csd * 100).toFixed(2)}pp</b></div>
+          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "横截面标准差", "Cross-sectional σ")}</span><b>${(r.csd * 100).toFixed(2)}pp</b></div>
           <div style="display:flex;gap:16px;justify-content:space-between"><span>IQR</span><b>${(r.iqr * 100).toFixed(2)}pp</b></div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>等权-加权</span><b>${(r.ew_cw_gap * 100).toFixed(2)}%</b></div>`;
+          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "等权-加权", "EW − CW")}</span><b>${(r.ew_cw_gap * 100).toFixed(2)}%</b></div>`;
       },
     },
     xAxis: {

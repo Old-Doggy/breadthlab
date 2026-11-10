@@ -16,6 +16,7 @@ function Skeleton({ h = 320 }: { h?: number }) {
 }
 
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
 
 export default function Today() {
   const { t, i18n } = useTranslation();
@@ -94,7 +95,7 @@ export default function Today() {
       label: t("metric.breadth"),
       value: ratio(last.breadth, 0),
       tone: (last.breadth >= 0.5 ? "up" : "down") as "up" | "down",
-      sub: `${last.n_adv} ↑ / ${last.n_dec} ↓ · ${breadthPctile}${lang === "en" ? "th pct" : "分位"}`,
+      sub: `${last.n_adv} ↑ / ${last.n_dec} ↓ · ${lang === "en" ? `${ord(breadthPctile)} pct` : `${breadthPctile}分位`}`,
       spark: series.slice(-21).map((r) => r.breadth),
       sparkTone: "accent" as const,
     },
@@ -102,7 +103,7 @@ export default function Today() {
       label: t("metric.limitUp"),
       value: `${num(last.limit_up_n)}`,
       tone: "up" as const,
-      sub: `${t("metric.limitDown")} ${num(last.limit_down_n)}${last.broken_n ? ` · 炸板 ${num(last.broken_n)}` : ""}`,
+      sub: `${t("metric.limitDown")} ${num(last.limit_down_n)}${last.broken_n ? ` · ${lang === "en" ? "broken" : "炸板"} ${num(last.broken_n)}` : ""}`,
       spark: series.slice(-21).map((r) => r.limit_up_n),
       sparkTone: "up" as const,
     },
@@ -152,7 +153,7 @@ export default function Today() {
             <div className="dotgrid pointer-events-none absolute inset-0 opacity-[0.35]" />
             <div className="relative flex flex-wrap items-center gap-3">
               <span className="mono text-[13px] text-[var(--text-2)]">{last.trade_date}</span>
-              <span className="text-[11px] text-[var(--muted)]">{weekday(last.trade_date)}</span>
+              <span className="text-[11px] text-[var(--muted)]">{weekday(last.trade_date, lang)}</span>
               <span
                 className={`pill h-[24px] border-transparent ${
                   regime === "broad_up" || regime === "concentrated_up"
@@ -166,8 +167,7 @@ export default function Today() {
               </span>
               <span className="pill h-[24px]">
                 <span className="h-1 w-1 rounded-full bg-[var(--muted)]" />
-                {breadthPctile}
-                {lang === "en" ? "th breadth pct." : "% 广度分位"}
+                {lang === "en" ? `${ord(breadthPctile)} breadth pct.` : `${breadthPctile}% 广度分位`}
               </span>
               <a
                 href="#/briefing"

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { setFmtLang } from "../lib/format";
 import { useUI } from "../store/ui";
 import { useTranslation } from "react-i18next";
 
@@ -124,6 +125,10 @@ export default function Shell() {
     document.title = `${title} · BreadthLab`;
   }, [title]);
 
+  useEffect(() => {
+    setFmtLang(i18n.language);
+  }, [i18n.language]);
+
   const refresh = () => {
     setSpin(true);
     qc.invalidateQueries();
@@ -209,7 +214,7 @@ export default function Shell() {
               title={t("common.lang")}
             >
               <Languages size={11.5} />
-              {lang === "zh" ? "中" : "EN"}
+              {i18n.language === "zh" ? "中" : "EN"}
             </button>
 
             <button
@@ -226,7 +231,7 @@ export default function Shell() {
           <div className="no-print flex items-center gap-2 border-b border-[var(--warn)]/25 bg-[var(--warn)]/[0.07] px-3 py-1.5 text-[10.5px] text-[var(--warn)] md:px-6">
             <span className="inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--warn)]" />
             <span className="truncate">
-              {lang === "en"
+              {i18n.language === "en"
                 ? `Data is ${stale.months} months behind. Run scripts/update.ps1 to refresh.`
                 : `数据已落后约 ${stale.months} 个月，运行 scripts/update.ps1 更新`}
             </span>

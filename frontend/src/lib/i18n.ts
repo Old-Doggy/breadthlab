@@ -246,7 +246,10 @@ i18n.use(initReactI18next).init({
     zh: { translation: zh },
     en: { translation: en },
   },
-  lng: (localStorage.getItem("bl.lang") as "zh" | "en") || "zh",
+  lng:
+    (new URLSearchParams(window.location.search).get("lang") as "zh" | "en") ||
+    (localStorage.getItem("bl.lang") as "zh" | "en") ||
+    "zh",
   fallbackLng: "zh",
   interpolation: { escapeValue: false },
 });

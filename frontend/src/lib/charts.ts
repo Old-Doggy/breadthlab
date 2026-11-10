@@ -5,6 +5,7 @@ import { shortDate } from "./format";
 import { regimeOf, regimeLabel } from "./regime";
 
 const axisDate = (rows: MarketDay[]) => rows.map((r) => shortDate(r.trade_date));
+const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
 
 /** 参与广度：近 N 日 breadth 面积 + 背离点。 */
 export function breadthArea(p: Palette, rows: MarketDay[]): EChartsOption {
@@ -97,11 +98,11 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         const t = (k: string) => k;
         return `<div style="min-width:188px">
           <div style="font-family:'JetBrains Mono Variable',monospace;font-size:11px;color:${p.muted};margin-bottom:6px">${r.trade_date} · ${t(regimeLabel(regimeOf(r), lang))}</div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>等权收益</span><b style="color:${r.ew_ret >= 0 ? p.up : p.down}">${(r.ew_ret * 100).toFixed(2)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>沪深300</span><b>${r.hs300_ret === null ? "—" : (r.hs300_ret * 100).toFixed(2) + "%"}</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>上涨占比</span><b>${br[i]}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "等权收益", "Equal-weight")}</span><b style="color:${r.ew_ret >= 0 ? p.up : p.down}">${(r.ew_ret * 100).toFixed(2)}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "沪深300", "CSI 300")}</span><b>${r.hs300_ret === null ? "—" : (r.hs300_ret * 100).toFixed(2) + "%"}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${br[i]}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>上涨/下跌</span><b>${r.n_adv} / ${r.n_dec}</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>Top10 贡献</span><b>${((r.top10_share || 0) * 100).toFixed(0)}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "Top10 贡献", "Top10 share")}</span><b>${((r.top10_share || 0) * 100).toFixed(0)}%</b></div>
         </div>`;
       },
     },
@@ -257,11 +258,11 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string): EC
         const [ret, breadth, amt, n, iqr] = q.data.value;
         return `<div style="min-width:158px">
           <div style="font-weight:600;margin-bottom:6px">${q.data.name}</div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>行业收益</span><b style="color:${ret >= 0 ? p.up : p.down}">${ret.toFixed(2)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>上涨占比</span><b>${breadth.toFixed(0)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>内部分化</span><b>${iqr.toFixed(2)}pp</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>成交额</span><b>${(amt / 1e8).toFixed(0)}亿</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>成分股</span><b>${n}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "行业收益", "Return")}</span><b style="color:${ret >= 0 ? p.up : p.down}">${ret.toFixed(2)}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${breadth.toFixed(0)}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "内部分化", "IQR")}</span><b>${iqr.toFixed(2)}pp</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "成交额", "Turnover")}</span><b>${(amt / 1e8).toFixed(0)}亿</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "成分股", "Constituents")}</span><b>${n}</b></div>
         </div>`;
       },
     },

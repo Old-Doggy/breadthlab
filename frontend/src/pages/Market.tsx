@@ -140,7 +140,7 @@ export default function Market() {
             bodyClass="pt-1"
           >
             <div className="h-[248px] px-2 pb-2">
-              <EChart option={concentrationChart(p, rows)} />
+              <EChart option={concentrationChart(p, rows, lang)} />
             </div>
           </Card>
         </div>
@@ -164,7 +164,7 @@ export default function Market() {
             bodyClass="pt-1"
           >
             <div className="h-[248px] px-2 pb-2">
-              <EChart option={dispersionChart(p, rows)} />
+              <EChart option={dispersionChart(p, rows, lang)} />
             </div>
           </Card>
         </div>

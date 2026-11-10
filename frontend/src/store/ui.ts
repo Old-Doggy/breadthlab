@@ -6,7 +6,10 @@ type Lang = "zh" | "en";
 
 const printMode = window.location.hash.startsWith("#/briefing");
 const initialTheme: Theme = printMode ? "light" : ((localStorage.getItem("bl.theme") as Theme) || "dark");
-const initialLang: Lang = (localStorage.getItem("bl.lang") as Lang) || "zh";
+const initialLang: Lang =
+  (new URLSearchParams(window.location.search).get("lang") as Lang) ||
+  (localStorage.getItem("bl.lang") as Lang) ||
+  "zh";
 
 export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
