@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useUI } from "../store/ui";
-import { axisStyle, baseChart, palettes } from "../lib/theme";
+import { axisStyle, baseChart, paletteFor } from "../lib/theme";
 import { money, num, pct, ratio, shortDate } from "../lib/format";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
@@ -12,8 +12,8 @@ import { limitQualityChart } from "../lib/charts4";
 export default function Sentiment() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const { theme } = useUI();
-  const p = palettes[theme];
+  const { theme, colorblind } = useUI();
+  const p = paletteFor(theme, colorblind);
 
   const { data } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
   const { data: limitQ } = useQuery({ queryKey: ["limit-quality"], queryFn: api.limitQuality });

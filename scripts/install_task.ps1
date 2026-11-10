@@ -1,21 +1,31 @@
-﻿# 注册「每个交易日 17:35 自动更新」的 Windows 计划任务（当前用户）
+﻿# 注册计划任务：每个交易日 17:35 增量更新；每周日 02:00 全量重算
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$script = Join-Path $root "scripts\update.ps1"
-
-$action = New-ScheduledTaskAction -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$script`"" `
-  -WorkingDirectory $root
-
-$trigger = New-ScheduledTaskTrigger -Weekly `
-  -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 17:35
+$updateScript = Join-Path $root "scripts\update.ps1"
+$rebuildScript = Join-Path $root "scripts\rebuild.ps1"
 
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
-  -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+  -ExecutionTimeLimit (New-TimeSpan -Minutes 45)
+
+$dailyAction = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$updateScript`"" `
+  -WorkingDirectory $root
+$dailyTrigger = New-ScheduledTaskTrigger -Weekly `
+  -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 17:35
 
 Register-ScheduledTask -TaskName "BreadthLab Daily Update" `
-  -Action $action -Trigger $trigger -Settings $settings `
-  -Description "BreadthLab: 收盘后增量更新 A 股数据并重新导出 dashboard" -Force
+  -Action $dailyAction -Trigger $dailyTrigger -Settings $settings `
+  -Description "BreadthLab: 收盘后增量更新 A 股数据并重新导出 dashboard" -Force | Out-Null
+
+$weeklyAction = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$rebuildScript`"" `
+  -WorkingDirectory $root
+$weeklyTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 02:00
+
+Register-ScheduledTask -TaskName "BreadthLab Weekly Rebuild" `
+  -Action $weeklyAction -Trigger $weeklyTrigger -Settings $settings `
+  -Description "BreadthLab: 周日全量重算 mart、刷新状态与简报" -Force | Out-Null
 
 Write-Host "已注册：BreadthLab Daily Update（周一至周五 17:35）"
+Write-Host "已注册：BreadthLab Weekly Rebuild（周日 02:00）"
 Write-Host "手动运行：Start-ScheduledTask -TaskName 'BreadthLab Daily Update'"

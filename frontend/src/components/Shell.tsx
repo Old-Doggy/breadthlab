@@ -111,7 +111,7 @@ function MobileNav() {
 
 export default function Shell() {
   const { t, i18n } = useTranslation();
-  const { theme, toggleTheme, lang, setLang } = useUI();
+  const { theme, toggleTheme, colorblind, toggleColorblind, setLang } = useUI();
   const qc = useQueryClient();
   const location = useLocation();
   const [spin, setSpin] = useState(false);

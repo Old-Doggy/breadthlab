@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Search, Star, X } from "lucide-react";
 import { api, type StockRow } from "../lib/api";
 import { useUI } from "../store/ui";
-import { palettes, axisStyle, baseChart } from "../lib/theme";
+import { paletteFor, axisStyle, baseChart } from "../lib/theme";
 import { money, num, pct, ratio, shortDate, trendClass } from "../lib/format";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
@@ -64,8 +64,8 @@ function klineOption(p: (typeof palettes)["dark"], bars: Bar[]) {
 export default function Stocks() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const { theme } = useUI();
-  const p = palettes[theme];
+  const { theme, colorblind } = useUI();
+  const p = paletteFor(theme, colorblind);
   const qc = useQueryClient();
 
   const [sector, setSector] = useState<string>("");

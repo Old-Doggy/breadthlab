@@ -7,9 +7,10 @@ interface Props {
   height?: number | string;
   className?: string;
   onEvents?: Record<string, (params: unknown) => void>;
+  ariaLabel?: string;
 }
 
-export default function EChart({ option, height = "100%", className, onEvents }: Props) {
+export default function EChart({ option, height = "100%", className, onEvents, ariaLabel }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const instRef = useRef<echarts.ECharts | null>(null);
 
@@ -41,5 +42,13 @@ export default function EChart({ option, height = "100%", className, onEvents }:
     return () => entries.forEach(([name, handler]) => inst.off(name, handler));
   }, [onEvents]);
 
-  return <div ref={hostRef} className={className} style={{ height, width: "100%" }} />;
+  return (
+    <div
+      ref={hostRef}
+      className={className}
+      style={{ height, width: "100%" }}
+      role="img"
+      aria-label={ariaLabel}
+    />
+  );
 }

@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api, type SectorDay } from "../lib/api";
 import { useUI } from "../store/ui";
-import { palettes } from "../lib/theme";
+import { paletteFor } from "../lib/theme";
 import { money, pct, ratio, trendClass } from "../lib/format";
 import { sectorBubble } from "../lib/charts";
 import { sectorHeatmap } from "../lib/charts2";
@@ -14,9 +15,16 @@ import { Card, MicroLabel } from "../components/Card";
 export default function Sectors() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const { theme } = useUI();
-  const p = palettes[theme];
-  const [sel, setSel] = useState<string | null>(null);
+  const { theme, colorblind } = useUI();
+  const p = paletteFor(theme, colorblind);
+  const [params, setParams] = useSearchParams();
+  const sel = params.get("sector");
+  const setSel = (s: string | null) => {
+    const p = new URLSearchParams(params);
+    if (s) p.set("sector", s);
+    else p.delete("sector");
+    setParams(p, { replace: true });
+  };
 
   const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const d = meta?.last_trade_date;

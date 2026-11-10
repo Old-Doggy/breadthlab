@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api, type MarketDay } from "../lib/api";
 import { useUI } from "../store/ui";
-import { palettes } from "../lib/theme";
+import { paletteFor } from "../lib/theme";
 import { money, pct, ratio, shortDate, trendClass } from "../lib/format";
 import { regimeScatter, regimeColor } from "../lib/charts2";
 import { regimeLabel, regimeOf, type RegimeKey } from "../lib/regime";
@@ -29,9 +30,15 @@ function std(xs: number[]) {
 export default function Regime() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const { theme } = useUI();
-  const p = palettes[theme];
-  const [range, setRange] = useState<RangeKey>("3Y");
+  const { theme, colorblind } = useUI();
+  const p = paletteFor(theme, colorblind);
+  const [params, setParams] = useSearchParams();
+  const range = (params.get("range") as RangeKey) || "3Y";
+  const setRange = (r: RangeKey) => {
+    const p = new URLSearchParams(params);
+    p.set("range", r);
+    setParams(p, { replace: true });
+  };
   const [sel, setSel] = useState<string | null>(null);
 
   const { data } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
@@ -153,6 +160,7 @@ export default function Regime() {
             <div className="h-[480px] px-1 pb-1">
               <EChart
                 option={regimeScatter(p, rows, selected, lang)}
+                ariaLabel="收益与广度的状态散点图，含四象限与近30日轨迹"
                 onEvents={{
                   click: (params: unknown) => {
                     const d = (params as { data?: { trade_date?: string } })?.data?.trade_date;

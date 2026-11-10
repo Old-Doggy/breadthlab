@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useUI } from "../store/ui";
-import { palettes } from "../lib/theme";
+import { paletteFor } from "../lib/theme";
 import { money, pct, ratio, shortDate, trendClass } from "../lib/format";
 import { returnBreadth } from "../lib/charts";
 import { concentrationChart, dispersionChart } from "../lib/charts2";
@@ -34,9 +35,15 @@ function StatTile({ label, value, sub, tone }: { label: string; value: string; s
 export default function Market() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const { theme } = useUI();
-  const p = palettes[theme];
-  const [range, setRange] = useState<RangeKey>("1Y");
+  const { theme, colorblind } = useUI();
+  const p = paletteFor(theme, colorblind);
+  const [params, setParams] = useSearchParams();
+  const range = (params.get("range") as RangeKey) || "1Y";
+  const setRange = (r: RangeKey) => {
+    const p = new URLSearchParams(params);
+    p.set("range", r);
+    setParams(p, { replace: true });
+  };
 
   const { data: series } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
 

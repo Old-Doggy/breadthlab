@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowDownRight, ArrowUpRight, FileText, Minus } from "lucide-react";
 import { api } from "../lib/api";
 import { useUI } from "../store/ui";
-import { palettes } from "../lib/theme";
+import { paletteFor } from "../lib/theme";
 import { money, num, pct, ratio, shortDate, trendClass, weekday } from "../lib/format";
 import { regimeLabel, regimeOf, verdict } from "../lib/regime";
 import { breadthArea, distributionChart, returnBreadth, sectorBubble } from "../lib/charts";
@@ -21,8 +21,8 @@ const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 >= 11 && n % 
 export default function Today() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const { theme } = useUI();
-  const p = palettes[theme];
+  const { theme, colorblind } = useUI();
+  const p = paletteFor(theme, colorblind);
 
   const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const end = meta?.last_trade_date;
@@ -289,7 +289,7 @@ export default function Today() {
             bodyClass="pt-1"
           >
             <div className="h-[300px] px-1 pb-1 md:h-[368px] md:px-2 md:pb-2">
-              <EChart option={returnBreadth(p, last120, lang)} />
+              <EChart option={returnBreadth(p, last120, lang)} ariaLabel="近120个交易日的等权收益、沪深300与上涨股票占比" />
             </div>
           </Card>
         </div>
@@ -363,7 +363,7 @@ export default function Today() {
             bodyClass="pt-0"
           >
             <div className="h-[280px] px-1 pb-1 md:h-[336px] md:px-2 md:pb-2">
-              {sectors.length ? <EChart option={sectorBubble(p, sectors, lang)} /> : <Skeleton h={320} />}
+              {sectors.length ? <EChart option={sectorBubble(p, sectors, lang)} ariaLabel="行业收益与上涨占比气泡图" /> : <Skeleton h={320} />}
             </div>
           </Card>
         </div>
@@ -386,7 +386,7 @@ export default function Today() {
           >
             <div className="h-[280px] px-1 pb-1 md:h-[336px] md:px-2 md:pb-2">
               {dist?.bins?.length ? (
-                <EChart option={distributionChart(p, dist.bins, dist.stats, lang)} />
+                <EChart option={distributionChart(p, dist.bins, dist.stats, lang)} ariaLabel="当日个股收益分布直方图" />
               ) : (
                 <Skeleton h={320} />
               )}

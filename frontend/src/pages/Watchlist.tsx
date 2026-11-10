@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { Download, Trash2, Upload } from "lucide-react";
 import { api, type StockRow } from "../lib/api";
 import { useUI } from "../store/ui";
-import { palettes } from "../lib/theme";
+import { paletteFor } from "../lib/theme";
 import { money, pct, ratio, trendClass } from "../lib/format";
 import { Card, MicroLabel } from "../components/Card";
 
@@ -14,8 +14,8 @@ type Row = StockRow & { shares: number; cost: number };
 export default function Watchlist() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const { theme } = useUI();
-  const p = palettes[theme];
+  const { theme, colorblind } = useUI();
+  const p = paletteFor(theme, colorblind);
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<Record<string, { shares?: string; cost?: string }>>({});
@@ -38,6 +38,9 @@ export default function Watchlist() {
       }),
     [rows],
   );
+
+  const sorted = [...enriched].sort((a, b) => b.mv - a.mv || a.ts_code.localeCompare(b.ts_code));
+  const cny = (v: number) => `¥${Math.round(v).toLocaleString("en-US")}`;
 
   const totalMv = enriched.reduce((a, r) => a + r.mv, 0);
   const totalCost = enriched.reduce((a, r) => a + r.cost * r.shares, 0);

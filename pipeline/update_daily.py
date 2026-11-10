@@ -343,4 +343,14 @@ if __name__ == "__main__":
     ap.add_argument("--date", help="目标日期 YYYYMMDD")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
-    print(json.dumps(run(args.date, args.dry_run), ensure_ascii=False, indent=2))
+
+    lock = settings.DATA / ".update.lock"
+    if lock.exists() and time.time() - lock.stat().st_mtime < 1800:
+        print(json.dumps({"status": "skipped", "reason": "another update is running"}, ensure_ascii=False))
+        raise SystemExit(0)
+    lock.write_text(str(time.time()), encoding="utf-8")
+    try:
+        result = run(args.date, args.dry_run)
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    finally:
+        lock.unlink(missing_ok=True)

@@ -62,6 +62,13 @@ const light: Palette = {
 
 export const palettes: Record<Theme, Palette> = { dark, light };
 
+/** 色盲友好变体：涨=蓝、跌=橙（不依赖红绿）。 */
+const darkCb: Palette = { ...dark, up: "#4c8dff", down: "#e8a33d", upSoft: "rgba(76,141,255,.16)", downSoft: "rgba(232,163,61,.16)" };
+const lightCb: Palette = { ...light, up: "#175cd3", down: "#b54708", upSoft: "rgba(23,92,211,.10)", downSoft: "rgba(181,71,8,.10)" };
+
+export const paletteFor = (theme: Theme, colorblind: boolean): Palette =>
+  colorblind ? (theme === "dark" ? darkCb : lightCb) : palettes[theme];
+
 export const SW_COLORS = [
   "#5b8cff",
   "#f0555a",

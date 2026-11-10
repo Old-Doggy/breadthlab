@@ -271,3 +271,17 @@ body {
   }
 }
 
+
+/* colorblind-friendly: blue = up, orange = down */
+:root[data-cb="1"][data-theme="dark"] {
+  --up: #4c8dff;
+  --down: #e8a33d;
+  --up-soft: rgba(76, 141, 255, 0.14);
+  --down-soft: rgba(232, 163, 61, 0.14);
+}
+:root[data-cb="1"][data-theme="light"] {
+  --up: #175cd3;
+  --down: #b54708;
+  --up-soft: rgba(23, 92, 211, 0.09);
+  --down-soft: rgba(181, 71, 8, 0.09);
+}

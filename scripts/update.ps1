@@ -12,8 +12,14 @@ $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $log = Join-Path $logDir "update_$stamp.log"
 
 try {
-  & $py -m pipeline.update_daily 2>&1 | Tee-Object -FilePath $log
-  if ($LASTEXITCODE -ne 0) { throw "update_daily failed ($LASTEXITCODE)" }
+  $updated = $false
+  for ($i = 1; $i -le 3; $i++) {
+    & $py -m pipeline.update_daily 2>&1 | Tee-Object -FilePath $log -Append
+    if ($LASTEXITCODE -eq 0) { $updated = $true; break }
+    Write-Warning "[update] attempt $i failed (exit $LASTEXITCODE), retrying in $($i * 45)s"
+    Start-Sleep -Seconds ($i * 45)
+  }
+  if (-not $updated) { throw "update_daily failed after 3 attempts" }
 
   & $py -m pipeline.build_marts 2>&1 | Tee-Object -FilePath $log -Append
   if ($LASTEXITCODE -ne 0) { throw "build_marts failed ($LASTEXITCODE)" }
