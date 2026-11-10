@@ -163,6 +163,24 @@ export interface Distribution {
   };
 }
 
+export interface UpdateLog {
+  date: string;
+  status: string;
+  days: number;
+  duration: number | null;
+  warnings: number;
+}
+
+export interface Reconcile {
+  generated_at?: string;
+  stocks?: number;
+  pairs?: number;
+  mae_pp?: number;
+  p95_pp?: number;
+  max_pp?: number;
+  share_gt_0_1pp?: number;
+}
+
 export interface RotationDay {
   trade_date: string;
   rotation_intensity: number;
@@ -216,6 +234,8 @@ export interface StaticPayload {
   watch_pool: StockRow[];
   stock_series?: Record<string, [string, number, number, number, number, number][]>;
   limit_quality?: LimitQuality[];
+  updates?: UpdateLog[];
+  reconcile?: Reconcile;
   quality?: QualityReport;
 }
 
@@ -345,6 +365,10 @@ export const api = {
   rotation: () => (S ? ok(S.rotation ?? []) : get<RotationDay[]>("/api/rotation")),
 
   limitQuality: () => (S ? ok(S.limit_quality ?? []) : get<LimitQuality[]>("/api/limit-quality")),
+
+  updates: () => (S ? ok(S.updates ?? []) : get<UpdateLog[]>("/api/updates")),
+
+  reconcile: () => (S ? ok(S.reconcile ?? null) : get<Reconcile | null>("/api/reconcile")),
 
   sectorRanks: () => (S ? ok(S.sector_ranks ?? []) : get<SectorRank[]>("/api/sector-ranks")),
 

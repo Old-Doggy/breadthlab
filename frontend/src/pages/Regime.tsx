@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api, type MarketDay } from "../lib/api";
 import { useUI } from "../store/ui";
 import { palettes } from "../lib/theme";
-import { money, pct, ratio, shortDate } from "../lib/format";
+import { money, pct, ratio, shortDate, trendClass } from "../lib/format";
 import { regimeScatter, regimeColor } from "../lib/charts2";
 import { regimeLabel, regimeOf, type RegimeKey } from "../lib/regime";
 import EChart from "../components/EChart";
@@ -46,6 +46,47 @@ export default function Regime() {
     KEYS.forEach((k) => (c[k] = 0));
     rows.forEach((r) => (c[regimeOf(r)] += 1));
     return c;
+  }, [rows]);
+
+  const regimeStats = useMemo(() => {
+    const runs: Record<string, number[]> = { broad_up: [], concentrated_up: [], mixed: [], broad_down: [] };
+    let cur: string | null = null;
+    let len = 0;
+    rows.forEach((r) => {
+      const k = regimeOf(r);
+      if (k === cur) len++;
+      else {
+        if (cur) runs[cur].push(len);
+        cur = k;
+        len = 1;
+      }
+    });
+    if (cur) runs[cur].push(len);
+    const agg = new Map(KEYS.map((k) => [k, { n: 0, s5: 0, c5: 0, s20: 0, c20: 0 }]));
+    rows.forEach((r, i) => {
+      const a = agg.get(regimeOf(r))!;
+      a.n++;
+      const f5 = rows.slice(i + 1, i + 6);
+      if (f5.length === 5) {
+        a.s5 += f5.reduce((x, y) => x * (1 + y.ew_ret), 1) - 1;
+        a.c5++;
+      }
+      const f20 = rows.slice(i + 1, i + 21);
+      if (f20.length === 20) {
+        a.s20 += f20.reduce((x, y) => x * (1 + y.ew_ret), 1) - 1;
+        a.c20++;
+      }
+    });
+    return KEYS.map((k) => {
+      const ds = runs[k];
+      const a = agg.get(k)!;
+      return {
+        k,
+        avgDur: ds.length ? ds.reduce((x, y) => x + y, 0) / ds.length : 0,
+        fwd5: a.c5 ? a.s5 / a.c5 : null,
+        fwd20: a.c20 ? a.s20 / a.c20 : null,
+      };
+    });
   }, [rows]);
 
   const similar = useMemo(() => {
@@ -147,6 +188,31 @@ export default function Regime() {
                   </div>
                 );
               })}
+            </div>
+
+            <div className="mt-4 border-t border-[var(--border)] pt-3">
+              <div className="grid grid-cols-[1fr_42px_50px_54px] text-[9px] uppercase tracking-wider text-[var(--faint)]">
+                <span>{lang === "en" ? "Regime" : "状态"}</span>
+                <span className="text-right">{lang === "en" ? "dur" : "持续"}</span>
+                <span className="text-right">{lang === "en" ? "fwd5" : "后5日"}</span>
+                <span className="text-right">{lang === "en" ? "fwd20" : "后20日"}</span>
+              </div>
+              {regimeStats.map((s) => (
+                <div key={s.k} className="grid grid-cols-[1fr_42px_50px_54px] items-center py-[3px] text-[10px]">
+                  <span className="flex items-center gap-1.5 text-[var(--text-2)]">
+                    <span className="h-[5px] w-[5px] rounded-full" style={{ background: regimeColor(s.k) }} />
+                    {regimeLabel(s.k, lang)}
+                  </span>
+                  <span className="mono text-right text-[var(--muted)]">{s.avgDur.toFixed(1)}d</span>
+                  <span className={`mono text-right ${trendClass(s.fwd5)}`}>{s.fwd5 == null ? "—" : pct(s.fwd5)}</span>
+                  <span className={`mono text-right ${trendClass(s.fwd20)}`}>{s.fwd20 == null ? "—" : pct(s.fwd20)}</span>
+                </div>
+              ))}
+              <p className="mt-2 text-[9px] leading-relaxed text-[var(--faint)]">
+                {lang === "en"
+                  ? "Forward returns are descriptive, not predictive."
+                  : "后续收益为区间描述性统计，不代表预测。"}
+              </p>
             </div>
           </Card>
 

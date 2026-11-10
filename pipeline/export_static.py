@@ -210,9 +210,36 @@ def build_payload(con) -> dict:
             [r["trade_date"], r["open"], r["high"], r["low"], r["close"], r["vol"]]
         )
 
+    updates = []
+    for p in sorted(settings.META.glob("update_*.json"), reverse=True)[:30]:
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+            updates.append(
+                {
+                    "date": p.stem.replace("update_", ""),
+                    "status": d.get("status"),
+                    "days": len(d.get("days", [])),
+                    "duration": d.get("duration_sec"),
+                    "warnings": len(d.get("warnings", [])),
+                }
+            )
+        except Exception:
+            continue
+
+    reconcile = {}
+    rfile = settings.META / "reconcile.json"
+    if rfile.exists():
+        try:
+            rj = json.loads(rfile.read_text(encoding="utf-8"))
+            reconcile = {k: rj.get(k) for k in ("generated_at", "stocks", "pairs", "mae_pp", "p95_pp", "max_pp", "share_gt_0_1pp")}
+        except Exception:
+            reconcile = {}
+
     payload = {
         "meta": meta,
         "quality": quality,
+        "updates": updates,
+        "reconcile": reconcile,
         "market": market,
         "sectors": sectors,
         "sector_monthly": monthly,

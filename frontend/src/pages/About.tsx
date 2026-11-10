@@ -41,6 +41,8 @@ export default function About() {
   const lang = i18n.language;
   const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const { data: quality } = useQuery({ queryKey: ["quality"], queryFn: api.quality });
+  const { data: updates } = useQuery({ queryKey: ["updates"], queryFn: api.updates });
+  const { data: reconcile } = useQuery({ queryKey: ["reconcile"], queryFn: api.reconcile });
 
   return (
     <div className="flex flex-col gap-4">
@@ -139,6 +141,75 @@ export default function About() {
           ))}
         </div>
       </Card>
+
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-12 xl:col-span-7">
+          <Card
+            title={lang === "en" ? "Update log" : "更新日志"}
+            subtitle={lang === "en" ? "Last 30 runs" : "最近 30 次运行"}
+            right={<span className="pill h-[22px] px-2 text-[10px]">{updates?.length ?? 0}</span>}
+            padded={false}
+            bodyClass="pt-0"
+          >
+            <div className="max-h-[260px] overflow-y-auto px-4 pb-3">
+              <table className="w-full border-collapse text-[10.5px]">
+                <thead className="sticky top-0 bg-[var(--panel)]">
+                  <tr className="text-left text-[9px] uppercase tracking-wider text-[var(--faint)]">
+                    <th className="py-1.5 font-medium">{lang === "en" ? "Date" : "日期"}</th>
+                    <th className="font-medium">{lang === "en" ? "Status" : "状态"}</th>
+                    <th className="text-right font-medium">{lang === "en" ? "Days" : "天数"}</th>
+                    <th className="text-right font-medium">{lang === "en" ? "Sec" : "耗时"}</th>
+                    <th className="text-right font-medium">{lang === "en" ? "Warn" : "告警"}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(updates ?? []).map((u) => (
+                    <tr key={u.date} className="border-t border-[var(--border)]">
+                      <td className="mono py-[5px] text-[var(--text-2)]">{u.date}</td>
+                      <td>
+                        <span
+                          className="inline-block h-[5px] w-[5px] rounded-full"
+                          style={{ background: u.status === "ok" ? "var(--down)" : "var(--warn)" }}
+                        />
+                        <span className="ml-1.5 text-[var(--muted)]">{u.status}</span>
+                      </td>
+                      <td className="mono text-right text-[var(--text-2)]">{u.days}</td>
+                      <td className="mono text-right text-[var(--text-2)]">{u.duration ?? "—"}</td>
+                      <td className="mono text-right text-[var(--muted)]">{u.warnings}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+        <div className="col-span-12 xl:col-span-5">
+          <Card
+            title={lang === "en" ? "Source reconciliation" : "源间对账"}
+            subtitle={lang === "en" ? "Tushare vs akshare, sampled" : "Tushare vs akshare · 抽样"}
+            right={<span className="pill h-[22px] px-2 text-[10px]">QA</span>}
+          >
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                { k: lang === "en" ? "Pairs" : "样本对", v: `${reconcile?.pairs ?? "—"}` },
+                { k: "MAE (pp)", v: `${reconcile?.mae_pp ?? "—"}` },
+                { k: "P95 (pp)", v: `${reconcile?.p95_pp ?? "—"}` },
+                { k: "Max (pp)", v: `${reconcile?.max_pp ?? "—"}` },
+              ].map((x) => (
+                <div key={x.k} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-2.5 py-2">
+                  <MicroLabel>{x.k}</MicroLabel>
+                  <div className="mono mt-1 text-[13px] text-[var(--text)]">{x.v}</div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[10px] leading-relaxed text-[var(--muted)]">
+              {lang === "en"
+                ? "Sampled cross-check only; Tushare remains the primary source. Differences above 0.1pp are flagged."
+                : "仅抽样交叉校验，主源仍是 Tushare；差异 >0.1pp 会被标记。"}
+            </p>
+          </Card>
+        </div>
+      </div>
 
       <Card
         title={lang === "en" ? "Metric definitions" : "指标口径"}

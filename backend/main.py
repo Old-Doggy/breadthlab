@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import json
 import math
 import sqlite3
 import threading
@@ -360,6 +361,39 @@ def limit_quality():
             ORDER BY trade_date
             """
         )
+    )
+
+
+@app.get("/api/updates")
+def updates():
+    import glob
+
+    out = []
+    for p in sorted(glob.glob(str(META / "update_*.json")), reverse=True)[:30]:
+        try:
+            d = json.loads(Path(p).read_text(encoding="utf-8"))
+            out.append(
+                {
+                    "date": Path(p).stem.replace("update_", ""),
+                    "status": d.get("status"),
+                    "days": len(d.get("days", [])),
+                    "duration": d.get("duration_sec"),
+                    "warnings": len(d.get("warnings", [])),
+                }
+            )
+        except Exception:
+            continue
+    return jsonify(out)
+
+
+@app.get("/api/reconcile")
+def reconcile():
+    p = META / "reconcile.json"
+    if not p.exists():
+        return jsonify({})
+    d = json.loads(p.read_text(encoding="utf-8"))
+    return jsonify(
+        {k: d.get(k) for k in ("generated_at", "stocks", "pairs", "mae_pp", "p95_pp", "max_pp", "share_gt_0_1pp")}
     )
 
 
