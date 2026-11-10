@@ -20,7 +20,7 @@ BreadthLab 把指数涨跌拆成四层：**市场广度 → 集中程度 → 行
 - 涨停潮是真的情绪修复，还是少数题材的狂欢？
 - 我的持仓今天是被普涨带起来的，还是被少数股票带的？
 
-BreadthLab 用 7 个页面把这些问题变成可交互的证据链。
+BreadthLab 用 8 个页面把这些问题变成可交互的证据链。
 
 ---
 
@@ -45,8 +45,9 @@ BreadthLab 用 7 个页面把这些问题变成可交互的证据链。
 | **个股分化** | 行业均值之下个股长什么样？ | 市值×收益散点 + 分布直方图 + 明细表 |
 | **情绪极端** | 涨停潮是真的还是假的？ | 涨跌停家数 + 连板梯队 + 新高新低 + 两融 |
 | **自选组合** | 我的组合被什么带动？ | 组合收益/贡献分解/上涨占比 |
+| **方法与数据** | 数据可信吗？口径是什么？ | 血缘 + 9 条质量门禁 + 更新日志 + 源间对账 |
 
-'### 每日简报（PDF / PNG）
+### 每日简报（PDF / PNG）
 
 `#/briefing` 是打印优化的 A4 单页：一句话结论 + 6 个 KPI + 两张核心图 + 行业强弱 + 最大贡献个股 + 今日三条。
 
@@ -57,17 +58,27 @@ pwsh -File scripts\briefing.ps1
 
 简报使用 light 主题、A4 版式，可直接贴进周报或打印。
 
-'### 双语
+### 双语
 
 界面支持中/英切换，也可用 URL 直接指定：`BreadthLab.html?lang=en#/`。
 英文覆盖导航、页面文案、KPI、核心图表 tooltip 与金额单位（`¥2.90T`）；
 行业名与股票名保留中文（数据本身即中文分类），这是有意的取舍。
 
-### 移动端'
+### 移动端
 
 `< 768px` 自动切换为底部导航 + 单列布局，图表高度、KPI 字号、表格列宽都会收缩；已在 390×844 下逐页校对。
 
-完整截图见 `docs/screenshots/`。'
+完整截图见 `docs/screenshots/`。
+
+### 界面预览
+
+| 行业参与 | 自选持仓 |
+|---|---|
+| ![Sectors](docs/screenshots/sectors.png) | ![Watchlist](docs/screenshots/watchlist.png) |
+| **状态地图** | **情绪极端** |
+| ![Regime](docs/screenshots/regime.png) | ![Sentiment](docs/screenshots/sentiment.png) |
+
+色盲友好模式：`colorblind-today.png`；英文界面：`en-today.png`；移动端：`mobile-today.png`。
 
 ---
 
@@ -194,13 +205,18 @@ breadthlab/
 ## 7. Roadmap
 
 - [x] 每日简报自动生成 PDF/PNG（无头 Edge）
+- [x] 自选持仓：股数/成本/盈亏/权重 + CSV
+- [x] 行业轮动矩阵与轮动强度
+- [x] 个股 K 线 + 3 年 PE 分位
+- [x] 封板质量与状态持续/后续统计
+- [x] 数据质量看板（9 条门禁 + 更新日志 + 源间对账）
+- [x] 色盲模式、URL 状态、PNG/CSV 导出
 - [ ] 行业映射升级为申万 PIT 成员（`index_member_all`）
-- [ ] 自选组合的持仓成本/盈亏与 Brinson 简化归因
-- [ ] 数据质量看板（最近 30 天门禁结果、源间对账）
-- [x] 移动端布局（底部导航 + 单列）
+- [ ] Brinson 简化归因
+- [ ] 更新失败桌面/SMTP 告警
 
 ---
 
-## 7. License
+## 8. License
 
 MIT © 2026 BreadthLab contributors
