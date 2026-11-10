@@ -349,6 +349,20 @@ def sector_ranks():
     )
 
 
+@app.get("/api/limit-quality")
+def limit_quality():
+    return jsonify(
+        rows(
+            """
+            SELECT trade_date::VARCHAR AS trade_date, fd_ratio, open_share, avg_open_times, n_limit_up
+            FROM mart_limit_quality
+            WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 400 DAY FROM mart_limit_quality)
+            ORDER BY trade_date
+            """
+        )
+    )
+
+
 @app.get("/api/quality")
 def quality():
     p = META / "quality" / "latest.json"

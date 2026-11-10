@@ -7,6 +7,7 @@ import { axisStyle, baseChart, palettes } from "../lib/theme";
 import { money, num, pct, ratio, shortDate } from "../lib/format";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
+import { limitQualityChart } from "../lib/charts4";
 
 export default function Sentiment() {
   const { t, i18n } = useTranslation();
@@ -15,6 +16,7 @@ export default function Sentiment() {
   const p = palettes[theme];
 
   const { data } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
+  const { data: limitQ } = useQuery({ queryKey: ["limit-quality"], queryFn: api.limitQuality });
   const all = data ?? [];
   const rows = useMemo(() => all.slice(-120), [all]);
   const last = rows[rows.length - 1];
@@ -261,6 +263,26 @@ export default function Sentiment() {
           </Card>
         </div>
       </div>
+
+      <Card
+        title={lang === "en" ? "Seal quality (history)" : "封板质量（历史）"}
+        subtitle={
+          lang === "en"
+            ? "Median seal amount / float cap and share opened · data ends 2026-05-22 (limit_list_d)"
+            : "封单额/流通市值中位数 · 开板比例 · 数据截至 2026-05-22（limit_list_d 权限）"
+        }
+        right={<span className="pill h-[22px] px-2 text-[10px]">limit_list_d</span>}
+        padded={false}
+        bodyClass="pt-0"
+      >
+        <div className="h-[260px] px-2 pb-2">
+          {limitQ?.length ? (
+            <EChart option={limitQualityChart(p, limitQ, lang)} />
+          ) : (
+            <div className="skeleton h-full w-full" />
+          )}
+        </div>
+      </Card>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[

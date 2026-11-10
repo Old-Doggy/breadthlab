@@ -176,6 +176,14 @@ export interface SectorRank {
   ret20?: number;
 }
 
+export interface LimitQuality {
+  trade_date: string;
+  fd_ratio: number | null;
+  open_share: number | null;
+  avg_open_times: number | null;
+  n_limit_up: number;
+}
+
 export interface QualityGate {
   id: number;
   name: string;
@@ -207,6 +215,7 @@ export interface StaticPayload {
   stocks: StockRow[];
   watch_pool: StockRow[];
   stock_series?: Record<string, [string, number, number, number, number, number][]>;
+  limit_quality?: LimitQuality[];
   quality?: QualityReport;
 }
 
@@ -334,6 +343,8 @@ export const api = {
   },
 
   rotation: () => (S ? ok(S.rotation ?? []) : get<RotationDay[]>("/api/rotation")),
+
+  limitQuality: () => (S ? ok(S.limit_quality ?? []) : get<LimitQuality[]>("/api/limit-quality")),
 
   sectorRanks: () => (S ? ok(S.sector_ranks ?? []) : get<SectorRank[]>("/api/sector-ranks")),
 

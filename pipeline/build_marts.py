@@ -290,6 +290,19 @@ GROUP BY trade_date
 ORDER BY trade_date
 """
 
+SQL_LIMIT_QUALITY = """
+CREATE OR REPLACE TABLE mart_limit_quality AS
+SELECT trade_date,
+       count(*) FILTER (WHERE is_up)                                   AS n_limit_up,
+       median(CASE WHEN is_up AND float_mv > 0 AND fd_amount > 0 THEN fd_amount / float_mv END) AS fd_ratio,
+       avg(CASE WHEN is_up THEN open_times END)                        AS avg_open_times,
+       count(*) FILTER (WHERE is_up AND open_times > 0)::DOUBLE /
+           nullif(count(*) FILTER (WHERE is_up), 0)                    AS open_share
+FROM core_limit_event
+GROUP BY trade_date
+ORDER BY trade_date
+"""
+
 SQL_MONTH = """
 CREATE OR REPLACE TABLE mart_market_month AS
 SELECT date_trunc('month', trade_date)::DATE AS month,
@@ -338,6 +351,7 @@ STEPS = [
     ("feat_stock", SQL_FEAT),
     ("mart_market_day", SQL_MARKET),
     ("mart_sector_day", SQL_SECTOR_DAY),
+    ("mart_limit_quality", SQL_LIMIT_QUALITY),
     ("mart_sector_rank", SQL_SECTOR_RANK),
     ("mart_rotation_day", SQL_ROTATION),
     ("mart_market_month", SQL_MONTH),

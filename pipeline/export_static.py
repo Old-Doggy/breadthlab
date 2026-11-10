@@ -94,6 +94,15 @@ def build_payload(con) -> dict:
         """
     )
 
+    limit_quality = rows(
+        """
+        SELECT trade_date::VARCHAR AS trade_date, fd_ratio, open_share, avg_open_times, n_limit_up
+        FROM mart_limit_quality
+        WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 400 DAY FROM mart_limit_quality)
+        ORDER BY trade_date
+        """
+    )
+
     sector_ranks = rows(
         """
         SELECT trade_date::VARCHAR AS trade_date, sw_l1, rank20
@@ -209,6 +218,7 @@ def build_payload(con) -> dict:
         "sector_monthly": monthly,
         "rotation": rotation,
         "sector_ranks": sector_ranks,
+        "limit_quality": limit_quality,
         "contrib": contrib,
         "distribution": {meta["last_trade_date"]: {"bins": dist_rows, "stats": dist_stats}},
         "stocks": stocks,
