@@ -138,6 +138,8 @@ def _friendly_update_error(text: str) -> str:
         return "未配置 Tushare Token，暂时无法拉取数据"
     if "no permission" in low:
         return "Tushare 权限不足，部分数据源不可用"
+    if "another update" in low or "already running" in low:
+        return "已有更新任务正在运行，请稍后再试"
     if "quality" in low or "gate" in low:
         return "数据质量校验未通过，本次更新已中止"
     if "empty" in low or "no data" in low:
@@ -199,6 +201,8 @@ def _run_update_job() -> None:
         code, out = _run_step([sys.executable, "-m", "pipeline.update_daily"], "fetching", 8, 52)
         if code != 0:
             raise UpdateError(out)
+        if '"status": "skipped"' in out or "another update" in out:
+            raise UpdateError("已有更新任务正在运行，请稍后再试")
 
         _job_progress(58, "building", "正在重算指标")
         code, out = _run_step([sys.executable, "-m", "pipeline.build_marts"], "building", 58, 86)

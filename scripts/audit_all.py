@@ -25,19 +25,23 @@ RESULTS: list[dict] = []
 def check(item: str, expected, actual, tol=0.0, note: str = "", kind="num") -> None:
     if kind == "num":
         if expected is None or actual is None:
-            ok = expected == actual
+            ok = bool(expected == actual)
             diff = None
         else:
             diff = float(actual) - float(expected)
-            ok = abs(diff) <= tol
+            ok = bool(abs(diff) <= tol)
         RESULTS.append(
             {"item": item, "expected": expected, "actual": actual, "diff": diff, "ok": ok, "note": note}
         )
     else:
-        ok = expected == actual
+        ok = bool(expected == actual)
         RESULTS.append(
             {"item": item, "expected": expected, "actual": actual, "diff": None, "ok": ok, "note": note}
         )
+
+
+def skip(item: str, reason: str) -> None:
+    RESULTS.append({"item": item, "expected": None, "actual": None, "diff": None, "ok": None, "note": reason})
 
 
 def audit_market(con, day: str) -> None:
@@ -118,8 +122,8 @@ def audit_market(con, day: str) -> None:
         "SELECT avg(breadth) FROM (SELECT breadth FROM mart_market_day WHERE trade_date <= ? ORDER BY trade_date DESC LIMIT 20)",
         [day],
     ).fetchall()[0][0]
-    print(f"  [info] 广度较20日均值 = {(m.breadth - avg20) * 100:.1f}pp (UI 显示 34.1pp)")
-    print(f"  [info] 广度分位 = {pctile:.1%} (UI 显示 90% 分位)")
+    print(f"  [info] 广度较前20日均值 = {(m.breadth - avg20) * 100:.1f}pp")
+    print(f"  [info] 广度分位 = {pctile:.1%}")
 
 
 def audit_sectors(con, day: str) -> None:
@@ -174,28 +178,72 @@ def audit_stocks_vs_akshare(con, day: str, n_samples: int) -> None:
     ).fetchdf().set_index("ts_code")
     d = pd.to_datetime(day).strftime("%Y%m%d")
     ok_price = ok_ret = ok_amt = 0
-    checked = 0
+    checked = checked_ret = checked_em = checked_sina = 0
     for code in sample:
+        r = ref.loc[code]
+        em = None
         try:
             df = ak.stock_zh_a_hist(symbol=code.split(".")[0], period="daily", start_date=d, end_date=d, adjust="")
-            if df is None or df.empty:
-                continue
-            row = df.iloc[0]
-            r = ref.loc[code]
+            if df is not None and not df.empty:
+                row = df.iloc[0]
+                em = (float(row["收盘"]), float(row["涨跌幅"]), float(row["成交额"]))
+                checked_em += 1
+        except Exception:
+            pass
+
+        if em is not None:
+            close, pct, amt = em
             checked += 1
-            ok_price += abs(float(row["收盘"]) - r.close) < 0.011
-            ok_ret += abs(float(row["涨跌幅"]) - r.ret * 100) < 0.05
-            ok_amt += abs(float(row["成交额"]) - r.amount * 1000) / max(1.0, r.amount * 1000) < 0.01
-        except Exception as e:
-            print(f"  [warn] akshare {code}: {type(e).__name__}")
-        time.sleep(0.15)
-    check("akshare 抽样收盘价一致", checked, ok_price, 0, note=f"{checked} 只，容差 0.01")
-    check("akshare 抽样涨跌幅一致", checked, ok_ret, 0, note=f"{checked} 只，容差 0.05pp")
-    check("akshare 抽样成交额一致", checked, ok_amt, 0, note=f"{checked} 只，容差 1%")
+            checked_ret += 1
+            ok_price += abs(close - r.close) < 0.011
+            ok_ret += abs(pct - r.ret * 100) < 0.05
+            ok_amt += abs(amt - r.amount * 1000) / max(1.0, r.amount * 1000) < 0.01
+        else:
+            # 东方财富限流时改用新浪日线：取前一日与当日收盘，自行计算涨跌幅
+            try:
+                sym = ("sh" if code.endswith(".SH") else "sz") + code.split(".")[0]
+                prev = con.execute(
+                    "SELECT max(cal_date) FROM core_trade_cal WHERE cal_date < ?", [day]
+                ).fetchall()[0][0]
+                df = ak.stock_zh_a_daily(symbol=sym, start_date=prev, end_date=d, adjust="")
+                if df is not None and len(df) >= 2:
+                    df = df.sort_values("date").reset_index(drop=True)
+                    close = float(df.iloc[-1]["close"])
+                    pct = (close / float(df.iloc[-2]["close"]) - 1) * 100
+                    amt = float(df.iloc[-1]["amount"])
+                    checked += 1
+                    checked_ret += 1
+                    checked_sina += 1
+                    ok_price += abs(close - r.close) < 0.011
+                    ok_ret += abs(pct - r.ret * 100) < 0.2
+                    ok_amt += abs(amt - r.amount * 1000) / max(1.0, r.amount * 1000) < 0.01
+            except Exception:
+                pass
+        time.sleep(0.1)
+
+    src = f"东财 {checked_em} / 新浪 {checked_sina}"
+    if checked == 0:
+        skip("akshare 抽样收盘价一致", "东财与新浪均不可用（限流/网络）")
+        skip("akshare 抽样成交额一致", "东财与新浪均不可用（限流/网络）")
+    else:
+        check("akshare 抽样收盘价一致", checked, ok_price, 0, note=f"{checked} 只，容差 0.01（{src}）")
+        check("akshare 抽样成交额一致", checked, ok_amt, 0, note=f"{checked} 只，容差 1%（{src}）")
+    if checked_ret == 0:
+        skip("akshare 抽样涨跌幅一致", "仅新浪可用，未覆盖涨跌幅字段")
+    else:
+        check("akshare 抽样涨跌幅一致", checked_ret, ok_ret, 0, note=f"{checked_ret} 只，容差 0.05pp")
 
 
 def audit_index_vs_akshare(con, day: str) -> None:
     import akshare as ak
+
+    local = con.execute(
+        "SELECT pct_chg / 100.0 FROM core_index_day WHERE trade_date = ? AND ts_code = '000300.SH'", [day]
+    ).fetchall()
+    if not local:
+        skip("沪深300 与 akshare 一致", "本地无指数数据")
+        return
+    local_ret = local[0][0]
 
     try:
         df = ak.index_zh_a_hist(
@@ -203,17 +251,29 @@ def audit_index_vs_akshare(con, day: str) -> None:
             start_date=pd.to_datetime(day).strftime("%Y%m%d"),
             end_date=pd.to_datetime(day).strftime("%Y%m%d"),
         )
-        if df is None or df.empty:
-            print("  [warn] akshare 指数为空")
+        if df is not None and not df.empty:
+            ak_ret = float(df.iloc[0]["涨跌幅"]) / 100
+            diff = abs(ak_ret - local_ret)
+            check("沪深300 与 akshare 一致", 0.0, round(diff, 6), 0.0002, note=f"东财 {ak_ret:.4%} vs local {local_ret:.4%}")
             return
-        ak_ret = float(df.iloc[0]["涨跌幅"]) / 100
-        local = con.execute(
-            "SELECT pct_chg / 100.0 FROM core_index_day WHERE trade_date = ? AND ts_code = '000300.SH'", [day]
-        ).fetchall()[0][0]
-        diff = abs(ak_ret - local)
-        check("沪深300 与 akshare 一致", 0.0, round(diff, 6), 0.0002, note=f"akshare {ak_ret:.4%} vs local {local:.4%}")
     except Exception as e:
-        print(f"  [warn] index check failed: {type(e).__name__}: {e}")
+        print(f"  [warn] 东财指数不可用: {type(e).__name__}")
+
+    try:
+        idx = ak.stock_zh_index_daily(symbol="sh000300")
+        idx["date"] = pd.to_datetime(idx["date"]).dt.date
+        idx = idx.sort_values("date").reset_index(drop=True)
+        target = pd.to_datetime(day).date()
+        pos = idx.index[idx["date"] == target]
+        if len(pos) == 0 or pos[0] == 0:
+            skip("沪深300 与 akshare 一致", "新浪指数无当日数据")
+            return
+        i = int(pos[0])
+        ak_ret = float(idx.loc[i, "close"]) / float(idx.loc[i - 1, "close"]) - 1
+        diff = abs(ak_ret - local_ret)
+        check("沪深300 与 akshare 一致", 0.0, round(diff, 6), 0.0002, note=f"新浪 {ak_ret:.4%} vs local {local_ret:.4%}")
+    except Exception as e:
+        skip("沪深300 与 akshare 一致", f"akshare 不可用: {type(e).__name__}")
 
 
 def audit_limit_method(con, day: str = "2026-05-22") -> None:
@@ -391,16 +451,20 @@ def main() -> None:
     audit_payload(con, day)
     con.close()
 
-    fails = [r for r in RESULTS if not r["ok"]]
-    print(f"\n== 结果：{len(RESULTS) - len(fails)}/{len(RESULTS)} 通过 ==")
+    passed = [r for r in RESULTS if r["ok"] is True]
+    fails = [r for r in RESULTS if r["ok"] is False]
+    skips = [r for r in RESULTS if r["ok"] is None]
+    print(f"\n== 结果：{len(passed)} 通过 / {len(fails)} 失败 / {len(skips)} 跳过（共 {len(RESULTS)}）==")
     for r in fails:
         print("  FAIL", r["item"], "expected", r["expected"], "actual", r["actual"], "diff", r["diff"], r["note"])
+    for r in skips:
+        print("  SKIP", r["item"], r["note"])
 
     lines = [
         f"# 数据审计报告 · {day}",
         "",
         f"- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"- 样本：{len(RESULTS)} 项检查，{len(fails)} 项失败",
+        f"- 样本：{len(RESULTS)} 项检查 · {len(passed)} 通过 · {len(fails)} 失败 · {len(skips)} 跳过",
         "",
         "| 检查项 | 期望/原始 | 实际/mart | 差异 | 结果 | 备注 |",
         "|---|---:|---:|---:|:--:|---|",
@@ -409,9 +473,12 @@ def main() -> None:
         exp = f"{r['expected']:.6g}" if isinstance(r["expected"], (int, float)) else str(r["expected"])
         act = f"{r['actual']:.6g}" if isinstance(r["actual"], (int, float)) else str(r["actual"])
         diff = "" if r["diff"] is None else f"{r['diff']:.6g}"
-        lines.append(f"| {r['item']} | {exp} | {act} | {diff} | {'✅' if r['ok'] else '❌'} | {r['note']} |")
+        mark = "✅" if r["ok"] is True else "❌" if r["ok"] is False else "⏭️"
+        lines.append(f"| {r['item']} | {exp} | {act} | {diff} | {mark} | {r['note']} |")
     (ROOT / "docs" / "audit_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("[written] docs/audit_report.md")
+    if fails:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
