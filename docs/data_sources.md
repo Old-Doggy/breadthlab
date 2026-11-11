@@ -77,3 +77,22 @@ python scripts/test_fallback_insert.py
 - 接入 **baostock**（免费、独立上游）做历史回补的第二源
 - `moneyflow` 用 akshare `stock_individual_fund_flow_rank` 兜底
 - `margin` 用交易所公开文件兜底
+
+## 7. 并发与锁（更新任务 vs API）
+
+DuckDB 同一时刻只允许一个写连接；旧版 API 常驻只读连接，会挡住 17:35 的更新。
+
+现在的行为：
+
+| 角色 | 连接方式 | 冲突时 |
+|---|---|---|
+| Flask API | 每请求一个只读连接，请求结束关闭 | 更新器持锁 → 返回 503 + `Retry-After: 10` |
+| 更新任务 | 写连接，`connect_wait` 最多等 300–600 秒 | 等 API 请求间隙拿锁 |
+| 导出 / 简报 | 只读 | 与更新互斥，排在更新之后 |
+
+运维要点：
+
+- 升级后**重启一次** `python -m backend.main`，旧进程的常驻连接才会释放。
+- 更新期间页面可能短暂提示“数据更新中”，属预期。
+- 若 10 分钟仍拿不到锁，检查是否有其它进程（DBeaver、另一个 Python）占着 `lake.duckdb`。
+- 等待超时可用环境变量调整：`$env:BREADTHLAB_LOCK_TIMEOUT = "600"`。

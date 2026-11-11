@@ -149,7 +149,7 @@ DDL: dict[str, str] = {
 
 def run(only: list[str] | None = None) -> dict:
     report: dict[str, dict] = {}
-    with session() as con:
+    with session(wait=True, timeout_sec=600) as con:
         for name, sql in DDL.items():
             if only and not any(o in name for o in only):
                 continue

@@ -118,3 +118,33 @@
 - 涨跌停价为规则计算值，可能与交易所差 0.01 元
 - 资金流、两融、涨停明细仍只有 Tushare，缺失时显示 `—`
 - 快照只能补当天，历史回补仍依赖 Tushare/本地快照
+
+---
+
+## ADR-11 并发模型：API 按请求持锁、更新器等锁、更新中返回 503
+
+**背景**：Flask API 若常驻一个只读 DuckDB 连接，会一直占着文件锁，17:35 的更新任务无法打开写连接。2026-11-11 实测确认：更新直接报 `Cannot open file ... being used`，当天数据断更。
+
+**选项**：
+- A) 更新时先停 API，更新完再启动：简单，但需要进程编排，且用户会看到服务中断。
+- B) API 改读导出的 parquet：彻底解耦，但要重写所有查询与导出，改动过大。
+- C) API 每请求开只读连接、请求结束释放；更新器等锁；更新期间 API 返回 503。
+
+**决定**：C。
+
+**实现**：
+- `backend/main.py`：`con()` 使用 Flask `g`，`teardown_appcontext` 关闭连接。
+- `pipeline/db.py`：`connect_wait()` 识别 DuckDB 锁错误，每 5 秒重试，默认 300 秒（`BREADTHLAB_LOCK_TIMEOUT` 可调），日志打印等待进度。
+- `update_daily` / `build_marts` / `refresh_status` / `bootstrap`：写会话使用 `session(wait=True)`。
+- API 捕获 `duckdb.Error` 返回 `503 + Retry-After: 10`。
+- 前端查询 3 次指数退避重试（1/2/4s），并显示“数据更新中”提示。
+
+**验证**（2026-11-11）：
+- API 请求返回 200 后，写连接立即可用。
+- 持有写锁时 API 返回 503 `{"error": "database busy"}`。
+- 旧进程持锁时，`connect_wait` 按预期等待并给出超时提示。
+
+**后果**：
+- 更新期间 API 短暂 503（通常几秒，最长一次更新时长），静态单文件不受影响。
+- API 每次请求多一次连接开销（本地约 10–30ms），可接受。
+- 升级后必须重启一次旧进程，否则旧连接仍会占锁。

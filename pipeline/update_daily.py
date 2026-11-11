@@ -242,7 +242,7 @@ def insert(con: duckdb.DuckDBPyConnection, ds: str, df: pd.DataFrame, day: str) 
 def run(target: str | None = None, dry: bool = False, source: str = "auto") -> dict:
     started = time.time()
     report: dict = {"status": "ok", "days": [], "warnings": []}
-    with session(read_only=(dry and source == "akshare"), wait=not dry, timeout_sec=600, interval=5) as con:
+    with session(read_only=dry, wait=not dry, timeout_sec=600, interval=5) as con:
         last = last_loaded(con)
         end = target or date.today().strftime("%Y%m%d")
         pro = None

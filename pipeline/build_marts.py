@@ -365,7 +365,7 @@ STEPS = [
 def run(only: list[str] | None = None) -> dict:
     bridge = (settings.ROOT / "config" / "industry_bridge.csv").as_posix()
     report = {}
-    with session() as con:
+    with session(wait=True, timeout_sec=600) as con:
         for name, sql in STEPS:
             if only and not any(o in name for o in only):
                 continue

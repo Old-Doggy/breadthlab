@@ -10,7 +10,7 @@ from .quality_gates import run_gates
 
 
 def main() -> dict:
-    with session() as con:
+    with session(wait=True, timeout_sec=600) as con:
         last = con.execute("SELECT max(trade_date) FROM core_stock_day").fetchall()[0][0]
         prev = con.execute(
             "SELECT max(cal_date) FROM core_trade_cal WHERE is_open=1 AND cal_date < ? AND cal_date >= '20161201'",
