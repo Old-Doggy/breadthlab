@@ -53,6 +53,15 @@ def con() -> duckdb.DuckDBPyConnection:
     return c
 
 
+@app.errorhandler(duckdb.Error)
+def _db_busy(e):  # 更新任务持有写锁时，接口返回 503 而不是 500
+    return (
+        jsonify({"error": "database busy", "detail": "数据更新中，请稍后重试"}),
+        503,
+        {"Retry-After": "10"},
+    )
+
+
 @app.teardown_appcontext
 def _release_con(exc: BaseException | None) -> None:
     c = g.pop("_con", None)
