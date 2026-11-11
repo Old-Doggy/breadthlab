@@ -87,3 +87,23 @@ def test_connection_released_after_request(monkeypatch):
     # 上下文退出后连接应已关闭，此时可以拿到写连接
     dd.connect(str(db)).close()
     db.unlink(missing_ok=True)
+
+def test_meta_includes_alert():
+    """失败告警应透传到 /api/meta，成功更新后清除。"""
+    import json
+
+    p = settings.META / "alert.json"
+    backup = p.read_text(encoding="utf-8") if p.exists() else None
+    try:
+        p.write_text(
+            json.dumps({"time": "2026-11-11T16:50:00+08:00", "stage": "export", "message": "simulated"}),
+            encoding="utf-8",
+        )
+        r = app.test_client().get("/api/meta")
+        assert r.status_code == 200
+        assert r.get_json()["alert"]["stage"] == "export"
+    finally:
+        if backup is None:
+            p.unlink(missing_ok=True)
+        else:
+            p.write_text(backup, encoding="utf-8")

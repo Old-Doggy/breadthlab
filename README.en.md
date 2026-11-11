@@ -15,7 +15,7 @@ A market breadth and structure dashboard for China A-shares. It computes breadth
 
 - Eight screens covering breadth, concentration, sectors, stocks, sentiment and holdings
 - One definition per metric, used by both charts and tables; see [metric_contracts.md](docs/metric_contracts.md)
-- Daily incremental load with nine quality gates; falls back to akshare when Tushare is unavailable
+- Daily incremental load with nine quality gates; failures raise a banner in the UI; falls back to akshare when Tushare is unavailable
 - Chinese/English UI, dark/light themes, colorblind palette, URL state, PNG/CSV export
 - Single-file HTML build that opens offline
 

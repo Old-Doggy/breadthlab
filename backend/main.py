@@ -100,6 +100,13 @@ def meta():
             status.update(json.loads(p.read_text(encoding="utf-8")))
         except Exception:
             pass
+    alert = None
+    ap = META / "alert.json"
+    if ap.exists():
+        try:
+            alert = json.loads(ap.read_text(encoding="utf-8"))
+        except Exception:
+            alert = None
     return jsonify(
         {
             "first_trade_date": str(base["f"]) if base.get("f") else None,
@@ -110,6 +117,7 @@ def meta():
             "status": status.get("status", "ok"),
             "updated_at": status.get("updated_at"),
             "warnings": status.get("warnings", []),
+            "alert": alert,
         }
     )
 

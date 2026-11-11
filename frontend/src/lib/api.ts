@@ -25,6 +25,7 @@ export interface Meta {
   source: string;
   status: "ok" | "stale" | "failed";
   warnings: string[];
+  alert?: { time: string; stage: string; message: string; log?: string | null } | null;
 }
 
 export interface MarketDay {

@@ -53,7 +53,14 @@ def build_payload(con) -> dict:
         "status": "ok",
         "updated_at": None,
         "warnings": [],
+        "alert": None,
     }
+    alert_file = settings.META / "alert.json"
+    if alert_file.exists():
+        try:
+            meta["alert"] = json.loads(alert_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
     status_file = settings.META / "status.json"
     if status_file.exists():
         try:

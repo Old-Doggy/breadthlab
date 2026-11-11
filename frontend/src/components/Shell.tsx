@@ -266,6 +266,20 @@ export default function Shell() {
           </button>
         </header>
 
+        {meta?.alert && (
+          <div className="no-print flex items-center gap-2 border-b border-[var(--up)]/30 bg-[var(--up-soft)] px-3 py-1.5 text-[11.5px] text-[var(--up)] md:px-5">
+            <span className="inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--up)]" />
+            <span className="truncate">
+              {i18n.language === "en"
+                ? `Last update failed (${meta.alert.stage}) at ${meta.alert.time.slice(5, 16).replace("T", " ")} — ${meta.alert.message}`
+                : `上次更新失败（${meta.alert.stage}）· ${meta.alert.time.slice(5, 16).replace("T", " ")} · ${meta.alert.message}`}
+            </span>
+            <a href="#/about" className="ml-auto shrink-0 underline">
+              {i18n.language === "en" ? "Details" : "详情"}
+            </a>
+          </div>
+        )}
+
         {isError && (
           <div className="no-print flex items-center gap-2 border-b border-[var(--warn)]/25 bg-[var(--warn-soft)] px-3 py-1.5 text-[11.5px] text-[var(--warn)] md:px-5">
             <span className="inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--warn)]" />

@@ -381,7 +381,20 @@ if __name__ == "__main__":
         raise SystemExit(0)
     lock.write_text(str(time.time()), encoding="utf-8")
     try:
-        result = run(args.date, args.dry_run, args.source)
+        from . import alerts
+
+        try:
+            result = run(args.date, args.dry_run, args.source)
+        except Exception as e:
+            if not args.dry_run:
+                alerts.write("update", f"{type(e).__name__}: {e}")
+            raise
+        if not args.dry_run:
+            if result.get("status") != "ok":
+                alerts.write("update", "; ".join(result.get("warnings", [])[-3:]) or "quality gates failed")
+                print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+                raise SystemExit(2)
+            alerts.clear()
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     finally:
         lock.unlink(missing_ok=True)
