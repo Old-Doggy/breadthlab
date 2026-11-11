@@ -305,9 +305,14 @@ def _inline_assets(html: str, assets: dict[str, bytes]) -> str:
         if raw is None:
             return ""
         js = raw.decode("utf-8").replace("</script", "<\\/script")
+        js = js.replace('"/favicon.png"', '"favicon.png"').replace('"/app-icon.png"', '"app-icon.png"')
         return f'<script type="module">{js}</script>'
 
     html = re.sub(r'<script[^>]+type="module"[^>]*src="([^"]+)"[^>]*></script>', repl_js, html)
+    # file:// 下绝对路径会指向磁盘根目录；图标改为相对路径（与 HTML 同目录）
+    html = html.replace('href="/favicon.png"', 'href="favicon.png"').replace(
+        'href="/app-icon.png"', 'href="app-icon.png"'
+    )
     return html
 
 

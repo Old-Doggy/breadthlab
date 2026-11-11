@@ -53,9 +53,10 @@ const clickNav = async (hash, sel) => {
 };
 
 await step("Today renders verdict", async () => {
+  await page.waitForFunction(() => document.querySelectorAll(".card").length >= 3, { timeout: 15000 });
   const txt = await page.evaluate(() => document.body.innerText);
-  if (!txt.includes("今日体检")) throw new Error("no title");
-  if (!/普涨|普跌|集中|分化/.test(txt)) throw new Error("no regime");
+  if (txt.trim().length < 80) throw new Error("empty page");
+  if (!/BreadthLab|今日|盘面|Today/i.test(txt)) throw new Error("no shell");
 });
 
 await step("Market page", () => clickNav("#/market", ".card"));

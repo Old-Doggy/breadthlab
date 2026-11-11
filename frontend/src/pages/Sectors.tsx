@@ -260,7 +260,7 @@ export default function Sectors() {
                     <span className="absolute left-1/2 top-[-2px] z-10 h-[9px] w-px bg-[var(--border-strong)]" />
                     <div
                       className="h-full rounded-full"
-                      style={{ width: `${s.breadth * 100}%`, background: s.breadth >= 0.5 ? p.accent : p.muted, opacity: 0.82 }}
+                      style={{ width: `${s.breadth * 100}%`, background: s.breadth >= 0.5 ? p.accent : p.muted, opacity: 0.95 }}
                     />
                   </div>
                   <span className="mono text-right text-[11px] text-[var(--muted)]">{ratio(s.breadth, 0)}</span>

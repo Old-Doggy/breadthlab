@@ -7,5 +7,5 @@ min_history_days: 5        # 上市前 5 日剔除出市场聚合
 min_valid_stocks: 3000     # 单日样本下限（质量门禁 1 的兜底）
 return_clip: [-0.11, 0.11] # 仅图表截尾，统计保留原值
 regime_thresholds:
-  breadth_high: 0.60
-  breadth_low: 0.45
+  breadth_high: 0.50
+  breadth_low: 0.50

@@ -1,4 +1,4 @@
-﻿export type Theme = "dark" | "light";
+export type Theme = "dark" | "light";
 
 export interface Palette {
   bg: string;
@@ -62,11 +62,11 @@ const light: Palette = {
   downSoft: "rgba(46,107,87,0.10)",
   accent: "#a16207",
   accentSoft: "rgba(161,98,7,0.10)",
-  copper: "#8c2f2f",
+  copper: "#9a6b16",
   copperSoft: "rgba(140,47,47,0.08)",
   warn: "#b54708",
-  grid: "rgba(26,27,29,0.20)",
-  axis: "rgba(26,27,29,0.32)",
+  grid: "rgba(26,27,29,0.46)",
+  axis: "rgba(26,27,29,0.55)",
 };
 
 export const palettes: Record<Theme, Palette> = { dark, light };
@@ -93,14 +93,14 @@ export const paletteFor = (theme: Theme, colorblind: boolean): Palette =>
 /** 分类色板：不含红绿，红绿只表方向 */
 export const seriesColors = (p: Palette): string[] =>
   p.bg === "#f6f2e8"
-    ? ["#a16207", "#be185d", "#6d28d9", "#c2410c", "#475569", "#9d174d", "#7c2d12", "#334155"]
+    ? ["#a16207", "#be185d", "#c2410c", "#7c2d12", "#1f2937", "#9d174d", "#b45309", "#4b5563"]
     : SW_COLORS;
 
 export const SW_COLORS = [
   "#d9a441",
   "#e0619b",
   "#c47a3d",
-  "#7c8aa0",
+  "#8a7f6a",
   "#b58b5a",
   "#d65db1",
   "#a8a29a",
@@ -146,6 +146,6 @@ export function axisStyle(p: Palette) {
       fontSize: 12,
       fontFamily: "JetBrains Mono Variable, JetBrains Mono, monospace",
     },
-    splitLine: { lineStyle: { color: p.grid, width: 1 } },
+    splitLine: { show: true, lineStyle: { color: p.grid, width: 1 } },
   };
 }

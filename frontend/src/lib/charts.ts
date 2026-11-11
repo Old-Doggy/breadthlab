@@ -399,7 +399,7 @@ export function distributionChart(
       ...axisStyle(p),
       axisLine: { show: true, lineStyle: { color: p.axis } },
       axisLabel: { ...axisStyle(p).axisLabel, fontSize: 11 },
-      splitLine: { show: false },
+      splitLine: { lineStyle: { color: p.grid } },
     },
     series: [
       {

@@ -57,6 +57,7 @@ export interface MarketDay {
   limit_up_list_n: number;
   limit_down_list_n: number;
   broken_n: number;
+  broken_rate: number | null;
   max_streak: number;
   streak_n: number;
   first_board_n: number;

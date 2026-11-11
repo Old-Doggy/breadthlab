@@ -1,4 +1,4 @@
-﻿import type { EChartsOption } from "echarts";
+import type { EChartsOption } from "echarts";
 import type { MarketDay, SectorDay, StockRow } from "./api";
 import { axisStyle, baseChart, type Palette } from "./theme";
 import { money, shortDate } from "./format";
@@ -49,16 +49,19 @@ export function treemapChart(p: Palette, stocks: StockRow[], lang = "zh"): EChar
     label: { show: false },
     children: arr.map((s) => {
       const ratio = (s.amount || 0) / total;
+      const fill = colorOf(s.ret || 0);
+      const [rr, gg, bb] = hex(fill);
+      const lum = (0.2126 * rr + 0.7152 * gg + 0.0722 * bb) / 255;
       return {
         name: s.name,
         value: s.amount || 0,
         ret: s.ret,
         code: s.ts_code,
         sector: s.sw_l1,
-        itemStyle: { color: colorOf(s.ret || 0) },
+        itemStyle: { color: fill },
         label: {
           show: ratio > 0.0035,
-          color: onLight && Math.abs(s.ret || 0) < 0.0004 ? "#1a1b1d" : "#ffffff",
+          color: lum > 0.58 ? "#1a1b1d" : "#ffffff",
           fontSize: ratio > 0.02 ? 11.5 : 10.5,
           lineHeight: ratio > 0.012 ? 12 : 11,
           overflow: "break" as const,

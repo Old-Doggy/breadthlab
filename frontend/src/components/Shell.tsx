@@ -266,6 +266,15 @@ export default function Shell() {
           </button>
         </header>
 
+        {isError && (
+          <div className="no-print flex items-center gap-2 border-b border-[var(--warn)]/25 bg-[var(--warn-soft)] px-3 py-1.5 text-[11.5px] text-[var(--warn)] md:px-5">
+            <span className="inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--warn)]" />
+            <span className="truncate">
+              {i18n.language === "en" ? "Data update in progress — retrying…" : "数据更新中 · 稍后自动重试"}
+            </span>
+          </div>
+        )}
+
         {stale && (
           <div className="no-print flex items-center gap-2 border-b border-[var(--warn)]/25 bg-[var(--warn-soft)] px-3 py-1.5 text-[11.5px] text-[var(--warn)] md:px-5">
             <span className="inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--warn)]" />

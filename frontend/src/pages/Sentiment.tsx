@@ -46,7 +46,7 @@ export default function Sentiment() {
       ],
       yAxis: [
         { type: "value", gridIndex: 0, ...axisStyle(p), splitNumber: 3 },
-        { type: "value", gridIndex: 1, min: 0, max: 100, ...axisStyle(p), axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%" }, splitNumber: 1, splitLine: { show: false } },
+        { type: "value", gridIndex: 1, min: 0, max: 100, ...axisStyle(p), axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%" }, splitNumber: 1 },
       ],
       series: [
         {
@@ -98,14 +98,14 @@ export default function Sentiment() {
       ],
       yAxis: [
         { type: "value", gridIndex: 0, ...axisStyle(p), splitNumber: 3 },
-        { type: "value", gridIndex: 1, min: 0, max: 10, ...axisStyle(p), splitLine: { show: false }, splitNumber: 2 },
+        { type: "value", gridIndex: 1, min: 0, max: 10, ...axisStyle(p), splitNumber: 2 },
       ],
       series: [
         {
           name: zh ? "连板家数" : "2+ boards",
           type: "bar",
           data: rows.map((r) => r.streak_n ?? 0),
-          itemStyle: { color: p.accent, opacity: 0.32, borderRadius: [2, 2, 0, 0] },
+          itemStyle: { color: p.accent, opacity: 0.85, borderRadius: [2, 2, 0, 0] },
           barWidth: "56%",
         },
         {
@@ -177,7 +177,7 @@ export default function Sentiment() {
   if (!rows.length) return <div className="skeleton h-[600px] w-full" />;
 
   const margin = [...all].reverse().find((r) => r.rzye != null);
-  const zhaban = last.broken_n != null ? last.broken_n / Math.max(1, (last.limit_up_n || 0) + last.broken_n) : null;
+  const zhaban = last.broken_rate ?? null;
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -202,7 +202,7 @@ export default function Sentiment() {
         <Kpi label={zh ? "涨停家数" : "Limit-ups"} value={num(last.limit_up_n)} sub={zh ? "收盘价 ≥ 涨停价" : "close ≥ limit"} hint={zh ? "用 stk_limit 的涨停价判定，不猜 10%/20%" : "Judged with stk_limit, not a fixed 10%/20%"} />
         <Kpi label={zh ? "跌停家数" : "Limit-downs"} value={num(last.limit_down_n)} sub={zh ? "收盘价 ≤ 跌停价" : "close ≤ limit"} />
         <Kpi label={zh ? "最高连板" : "Max streak"} value={`${last.max_streak ?? "—"}`} sub={`${num(last.streak_n ?? 0)} ${zh ? "家连板" : "with 2+ boards"}`} />
-        <Kpi label={zh ? "炸板率" : "Broken rate"} value={zhaban === null ? "—" : ratio(zhaban, 1)} sub={`${num(last.broken_n ?? 0)} ${zh ? "家炸板" : "broken"}`} hint={zh ? "炸板 /（涨停 + 炸板）" : "broken / (limit-up + broken)"} />
+        <Kpi label={zh ? "炸板率" : "Broken rate"} value={zhaban === null ? "—" : ratio(zhaban, 1)} sub={`${num(last.broken_n ?? 0)} ${zh ? "家炸板" : "broken"}`} hint={zh ? "炸板 /（官方涨停 + 炸板），官方口径不含 ST" : "broken / (official limit-ups + broken), official universe excludes ST"} />
       </div>
 
       <div className="mt-1 flex items-center justify-between">

@@ -23,12 +23,14 @@ page.on("pageerror", (e) => errors.push(String(e)));
 
 const out = {};
 
-await page.goto(base + "#/market?range=3Y", { waitUntil: "load", timeout: 60000 });
+await page.goto(base + "#/sectors", { waitUntil: "load", timeout: 60000 });
 await page.waitForSelector(".card", { timeout: 15000 });
 await new Promise((r) => setTimeout(r, 800));
 out.exportButtons = await page.evaluate(() =>
   [...document.querySelectorAll("button")].filter((b) => /^(PNG|CSV)$/.test(b.textContent.trim())).length,
 );
+await page.goto(base + "#/market?range=3Y", { waitUntil: "load", timeout: 60000 });
+await page.waitForSelector(".card", { timeout: 15000 });
 out.urlRange = await page.evaluate(() => window.location.hash);
 out.rangeButtons = await page.evaluate(() =>
   [...document.querySelectorAll("button")].filter((b) => ["1M", "3M", "6M", "1Y", "3Y", "ALL"].includes(b.textContent.trim())).length,

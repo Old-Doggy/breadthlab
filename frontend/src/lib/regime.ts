@@ -3,8 +3,8 @@ import type { MarketDay } from "./api";
 export type RegimeKey = "broad_up" | "concentrated_up" | "mixed" | "broad_down";
 
 export const regimeOf = (m: Pick<MarketDay, "ew_ret" | "breadth">): RegimeKey => {
-  if (m.ew_ret > 0) return m.breadth >= 0.6 ? "broad_up" : m.breadth < 0.45 ? "concentrated_up" : "mixed";
-  return m.breadth >= 0.6 ? "mixed" : m.breadth < 0.45 ? "broad_down" : "mixed";
+  if (m.ew_ret > 0) return m.breadth >= 0.5 ? "broad_up" : "concentrated_up";
+  return m.breadth >= 0.5 ? "mixed" : "broad_down";
 };
 
 export const regimeLabel = (key: RegimeKey, lang: string): string => {
@@ -29,19 +29,19 @@ export function verdict(m: MarketDay, lang: string): string {
   const idx = ((m.hs300_ret ?? 0) * 100).toFixed(2);
   const top = Math.round((m.top10_share || 0) * 100);
   if (lang === "en") {
-    if (m.ew_ret > 0 && m.breadth < 0.45)
+    if (m.ew_ret > 0 && m.breadth < 0.5)
       return `CSI 300 ${idx > "0" ? "+" : ""}${idx}% but only ${b}% of stocks rose — the gain was carried by a handful of heavyweights (top 10 ≈ ${top}% of the move).`;
-    if (m.ew_ret < 0 && m.breadth >= 0.6)
+    if (m.ew_ret < 0 && m.breadth >= 0.5)
       return `The index fell ${idx}% while ${b}% of stocks actually rose — the drag came from large caps, not the broad tape.`;
-    if (m.ew_ret < 0 && m.breadth < 0.45)
+    if (m.ew_ret < 0 && m.breadth < 0.5)
       return `Broad selloff: only ${b}% of stocks advanced and the equal-weight market fell ${(m.ew_ret * 100).toFixed(2)}%.`;
     return `Broad participation: ${b}% of stocks advanced with an equal-weight return of ${(m.ew_ret * 100).toFixed(2)}%.`;
   }
-  if (m.ew_ret > 0 && m.breadth < 0.45)
+  if (m.ew_ret > 0 && m.breadth < 0.5)
     return `沪深300 收涨 ${idx}%，但只有 ${b}% 的股票上涨——涨幅集中在少数权重股，Top10 贡献了 ${top}% 的指数涨跌。`;
-  if (m.ew_ret < 0 && m.breadth >= 0.6)
+  if (m.ew_ret < 0 && m.breadth >= 0.5)
     return `指数下跌 ${idx}%，但 ${b}% 的股票其实在涨——拖累来自大市值，而不是全市场。`;
-  if (m.ew_ret < 0 && m.breadth < 0.45)
+  if (m.ew_ret < 0 && m.breadth < 0.5)
     return `普跌：仅 ${b}% 的股票上涨，等权收益 ${(m.ew_ret * 100).toFixed(2)}%，下跌具有广泛参与。`;
   return `普涨：${b}% 的股票上涨，等权收益 ${(m.ew_ret * 100).toFixed(2)}%，上涨具备广泛参与。`;
 }
@@ -60,16 +60,16 @@ export function headline(m: Pick<MarketDay, "ew_ret" | "breadth" | "hs300_ret">,
   const quiet = Math.abs(idx) < 0.25;
   if (lang === "en") {
     if (m.ew_ret > 0 && quiet) return `The index barely moved — ${b}% of stocks rose`;
-    if (m.ew_ret > 0 && m.breadth >= 0.6) return `${b}% of stocks are rising`;
-    if (m.ew_ret > 0 && m.breadth < 0.45) return `The index is up, but only ${b}% of stocks joined`;
-    if (m.ew_ret < 0 && m.breadth >= 0.6) return `The index is down, most stocks are up`;
-    if (m.ew_ret < 0 && m.breadth < 0.45) return `Broad selloff — only ${b}% advanced`;
+    if (m.ew_ret > 0 && m.breadth >= 0.5) return `${b}% of stocks are rising`;
+    if (m.ew_ret > 0 && m.breadth < 0.5) return `The index is up, but only ${b}% of stocks joined`;
+    if (m.ew_ret < 0 && m.breadth >= 0.5) return `The index is down, most stocks are up`;
+    if (m.ew_ret < 0 && m.breadth < 0.5) return `Broad selloff — only ${b}% advanced`;
     return `Split tape — ${b}% of stocks are up`;
   }
   if (m.ew_ret > 0 && quiet) return `指数几乎没动，${b}% 的股票在涨`;
-  if (m.ew_ret > 0 && m.breadth >= 0.6) return `普涨：${b}% 的股票在涨`;
-  if (m.ew_ret > 0 && m.breadth < 0.45) return `指数在涨，但只有 ${b}% 的股票跟上了`;
-  if (m.ew_ret < 0 && m.breadth >= 0.6) return `指数在跌，多数股票却在涨`;
-  if (m.ew_ret < 0 && m.breadth < 0.45) return `普跌：仅 ${b}% 的股票上涨`;
+  if (m.ew_ret > 0 && m.breadth >= 0.5) return `普涨：${b}% 的股票在涨`;
+  if (m.ew_ret > 0 && m.breadth < 0.5) return `指数在涨，但只有 ${b}% 的股票跟上了`;
+  if (m.ew_ret < 0 && m.breadth >= 0.5) return `指数在跌，多数股票却在涨`;
+  if (m.ew_ret < 0 && m.breadth < 0.5) return `普跌：仅 ${b}% 的股票上涨`;
   return `结构分化：${b}% 的股票在涨`;
 }

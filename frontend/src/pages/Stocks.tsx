@@ -237,7 +237,7 @@ export default function Stocks() {
         splitLine: { show: false },
         axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11, showMinLabel: false, showMaxLabel: false },
       },
-      yAxis: { type: "value", ...axisStyle(p), axisLabel: { show: false }, splitLine: { show: false } },
+      yAxis: { type: "value", ...axisStyle(p), axisLabel: { show: false } },
       series: [
         {
           type: "bar",

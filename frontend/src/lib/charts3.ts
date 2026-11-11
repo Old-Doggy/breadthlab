@@ -1,4 +1,4 @@
-﻿import type { EChartsOption } from "echarts";
+import type { EChartsOption } from "echarts";
 import type { RotationDay, SectorRank } from "./api";
 import { axisStyle, baseChart, type Palette, seriesColors } from "./theme";
 import { shortDate } from "./format";
@@ -85,7 +85,7 @@ export function rotationBump(
       interval: 5,
       ...axisStyle(p),
       axisLabel: { ...axisStyle(p).axisLabel, fontSize: 11, formatter: "#{value}" },
-      splitLine: { lineStyle: { color: p.grid, type: "dashed" } },
+      splitLine: { lineStyle: { color: p.grid } },
     },
     series: picked.map((name, i) => {
       const isSel = name === selected;
@@ -194,7 +194,7 @@ export function rotationPulse(p: Palette, rows: RotationDay[], lang: string): EC
           value: +x.value.toFixed(2),
           itemStyle: {
             color: i === data.length - 1 ? p.copper : p.accent,
-            opacity: i === data.length - 1 ? 0.95 : 0.32,
+            opacity: i === data.length - 1 ? 0.95 : 0.92,
             borderRadius: [2, 2, 0, 0],
           },
         })),
