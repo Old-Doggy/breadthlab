@@ -89,6 +89,7 @@ export function rotationBump(
     },
     series: picked.map((name, i) => {
       const isSel = name === selected;
+      const hasSelection = !!selected;
       const color = isSel ? p.copper : seriesColors(p)[i % seriesColors(p).length];
       return {
         name,
@@ -96,11 +97,16 @@ export function rotationBump(
         data: dates.map((d) => bySector.get(name)?.get(d) ?? null),
         showSymbol: true,
         symbol: "circle",
-        symbolSize: isSel ? 4.5 : 3,
+        symbolSize: isSel ? 4.5 : hasSelection ? 3.4 : 3,
         smooth: 0.12,
         connectNulls: true,
-        lineStyle: { width: isSel ? 2.6 : 1.7, color, opacity: isSel ? 1 : 0.82 },
-        itemStyle: { color },
+        lineStyle: {
+          width: isSel ? 2.8 : hasSelection ? 1.8 : 1.7,
+          color,
+          opacity: isSel ? 1 : hasSelection ? 0.42 : 0.82,
+        },
+        itemStyle: { color, opacity: isSel ? 1 : hasSelection ? 0.46 : 1 },
+        triggerLineEvent: true,
         endLabel: {
           show: isSel,
           formatter: name,
@@ -111,8 +117,8 @@ export function rotationBump(
         },
         emphasis: {
           focus: "series",
-          lineStyle: { width: 3 },
-          itemStyle: { borderColor: p.text, borderWidth: 1 },
+          lineStyle: { width: 2.8, opacity: 1 },
+          itemStyle: { opacity: 1, borderColor: p.text, borderWidth: 1 },
           label: { show: true },
         },
         blur: {

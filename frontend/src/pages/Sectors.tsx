@@ -12,6 +12,7 @@ import { monthlyPathChart, rotationBump, rotationPulse } from "../lib/charts3";
 import { downloadDataUrl } from "../lib/download";
 import EChart, { type EChartHandle } from "../components/EChart";
 import { Card } from "../components/Card";
+import { MonthlyGrid } from "../components/MonthlyGrid";
 import { PageHead } from "../components/PageHead";
 
 export default function Sectors() {
@@ -109,10 +110,10 @@ export default function Sectors() {
     return { latest: latest.rotation_intensity, avg20, pctile, days: list.length };
   }, [rotation]);
   const quadCounts = useMemo(() => {
-    const broad = rows.filter((r) => r.ew_ret > 0 && r.breadth >= 0.6).length;
-    const narrow = rows.filter((r) => r.ew_ret > 0 && r.breadth < 0.45).length;
-    const selloff = rows.filter((r) => r.ew_ret < 0 && r.breadth < 0.45).length;
-    return { broad, narrow, selloff, mixed: rows.length - broad - narrow - selloff, over60: rows.filter((r) => r.breadth >= 0.6).length };
+    const broad = rows.filter((r) => r.ew_ret > 0 && r.breadth >= 0.5).length;
+    const narrow = rows.filter((r) => r.ew_ret > 0 && r.breadth < 0.5).length;
+    const selloff = rows.filter((r) => r.ew_ret < 0 && r.breadth < 0.5).length;
+    return { broad, narrow, selloff, mixed: rows.length - broad - narrow - selloff, over50: rows.filter((r) => r.breadth >= 0.5).length };
   }, [rows]);
   const selStocks = (stocks ?? []).slice(0, 400);
   const top = selStocks.slice(0, 6);
@@ -222,7 +223,7 @@ export default function Sectors() {
             index="02"
             title={zh ? "行业广度榜" : "Breadth ranking"}
             subtitle={zh ? "行业内上涨股票占比 · 50% 是分水岭 · 点击下钻" : "Share of constituents advancing · 50% is the divide"}
-            right={<span className="pill">{quadCounts.over60}/{rows.length} ≥60%</span>}
+            right={<span className="pill">{quadCounts.over50}/{rows.length} ≥50%</span>}
             prov={zh ? "广度 = 行业内上涨家数 /（上涨+下跌）；右列为当日等权收益" : "Breadth = advancers / (adv + dec); right column is EW return"}
             padded={false}
             bodyClass="pt-0"
@@ -276,8 +277,8 @@ export default function Sectors() {
         index="03"
         title={zh ? "市场云图 · 成交额 × 今日涨跌" : "Market map · turnover × return"}
         subtitle={zh ? "面积 = 成交额 · 颜色 = 涨跌幅 · 分组 = 申万一级 · 成交额前 30 只 · 点击色块选行业" : "Area = turnover · colour = return · grouped by SW L1 · top 30 by turnover · click a tile to select"}
-        right={<span className="pill">{zh ? "沪深 A 股" : "A-shares"}</span>}
-        prov={zh ? "颜色按当日涨跌幅截断 ±5%，避免极值吞掉中间色阶" : "Colour clipped at ±5%"}
+        right={<div className="flex items-center gap-1.5"><span className="micro">跌</span><span className="h-[6px] w-20 rounded-full" style={{ background: `linear-gradient(90deg, ${p.down}, #b9a67a, ${p.up})` }} /><span className="micro">涨</span></div>}
+        prov={zh ? "面积 = 成交额；颜色按当日涨跌幅连续映射，低涨幅接近沙色，高涨幅深红，跌幅转绿" : "Area = turnover; colour maps continuously from green through sand to red"}
         padded={false}
         bodyClass="pt-0"
         footer={
@@ -312,7 +313,7 @@ export default function Sectors() {
         title={zh ? "行业月度收益 · 轨迹" : "Monthly return paths"}
         subtitle={
           zh
-            ? `近 ${heatWindow} 个月 · ${heatScope === "focus" ? "领涨 / 落后各 6 个行业 · 累计收益曲线 · 点击线选中" : "31 个申万一级行业 · 12M 累计收益排序"}`
+            ? `近 ${heatWindow} 个月 · ${heatScope === "focus" ? "领涨 / 落后各 6 · 小倍数 · 同一纵轴 · 点击卡片选中" : "31 个申万一级行业 · 12M 累计收益排序"}`
             : `Last ${heatWindow} months · ${heatScope === "focus" ? "top / bottom 6 · cumulative paths · click a line" : "all 31 SW L1 · ranked by 12M cumulative return"}`
         }
         right={
@@ -394,31 +395,7 @@ export default function Sectors() {
               })}
             </div>
           ) : heat.groups.length > 1 ? (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              {heat.groups.map((group, gi) => (
-                <div key={gi} className="min-w-0">
-                  <div className="mb-1 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="micro">{gi === 0 ? (zh ? "领涨 6" : "Top 6") : zh ? "落后 6" : "Bottom 6"}</span>
-                      <span className="micro text-[var(--faint)]">{heatWindow}M</span>
-                    </div>
-                    <span className="micro text-[var(--faint)]">{zh ? "累计复利" : "compounded"}</span>
-                  </div>
-                  <div className="h-[240px]">
-                    <EChart
-                      option={monthlyPathChart(p, heat.months, group, lang)}
-                      onEvents={{
-                        click: (params) => {
-                          const name = (params as { seriesName?: string }).seriesName;
-                          if (name) setSel(name);
-                        },
-                      }}
-                      ariaLabel={zh ? "行业累计收益曲线" : "Sector cumulative return paths"}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <MonthlyGrid groups={heat.groups} months={heat.months} p={p} lang={lang} onSelect={setSel} />
           ) : (
             <div className="h-[260px]">
               <EChart

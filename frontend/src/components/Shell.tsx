@@ -25,7 +25,20 @@ import { setFmtLang } from "../lib/format";
 import { useUI } from "../store/ui";
 import { useTranslation } from "react-i18next";
 import { CommandPalette } from "./CommandPalette";
+import { UpdateControl } from "./UpdateControl";
 import { StatusBar } from "./StatusBar";
+
+function friendlyAlert(message: string | undefined, zh: boolean): string {
+  const raw = (message || "").trim();
+  if (!raw) return zh ? "更新脚本未完成，请稍后重试" : "The update did not finish; please retry";
+  if (/traceback|module not found|no module named/i.test(raw)) {
+    return zh ? "更新环境或数据源异常，请使用顶部“拉取今日数据”重试" : "The update environment or data source failed; retry with “Fetch today”";
+  }
+  if (/permission/i.test(raw)) return zh ? "数据源权限不足，本次更新未完成" : "Data-source permission denied";
+  if (/quality|gate/i.test(raw)) return zh ? "数据质量校验未通过，本次更新已中止" : "Quality gates failed; update stopped";
+  const one = raw.split(/\r?\n/).filter((x) => x.trim() && !/^Traceback/i.test(x.trim())).pop() || raw;
+  return one.length > 120 ? `${one.slice(0, 120)}…` : one;
+}
 
 const NAV = [
   { to: "/", key: "today", icon: Gauge },
@@ -209,6 +222,8 @@ export default function Shell() {
             <Search size={15} />
           </button>
 
+          <UpdateControl />
+
           <div className="hidden items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-[5px] sm:flex">
             <span
               className="inline-block h-[6px] w-[6px] rounded-full"
@@ -231,7 +246,8 @@ export default function Shell() {
           </a>
 
           <button
-            onClick={refresh}            className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] transition-colors hover:text-[var(--text)]"
+            onClick={refresh}
+            className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] transition-colors hover:text-[var(--text)]"
             title={t("common.refresh")}
             aria-label={t("common.refresh")}
           >
@@ -266,13 +282,13 @@ export default function Shell() {
           </button>
         </header>
 
-        {meta?.alert && (
+        {meta?.alert && !location.pathname.startsWith("/labs") && (
           <div className="no-print flex items-center gap-2 border-b border-[var(--up)]/30 bg-[var(--up-soft)] px-3 py-1.5 text-[11.5px] text-[var(--up)] md:px-5">
             <span className="inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--up)]" />
             <span className="truncate">
               {i18n.language === "en"
-                ? `Last update failed (${meta.alert.stage}) at ${meta.alert.time.slice(5, 16).replace("T", " ")} — ${meta.alert.message}`
-                : `上次更新失败（${meta.alert.stage}）· ${meta.alert.time.slice(5, 16).replace("T", " ")} · ${meta.alert.message}`}
+                ? `Last update failed at ${meta.alert.time.slice(5, 16).replace("T", " ")} — ${friendlyAlert(meta.alert.message, false)}`
+                : `上次更新失败 · ${meta.alert.time.slice(5, 16).replace("T", " ")} · ${friendlyAlert(meta.alert.message, true)}`}
             </span>
             <a href="#/about" className="ml-auto shrink-0 underline">
               {i18n.language === "en" ? "Details" : "详情"}

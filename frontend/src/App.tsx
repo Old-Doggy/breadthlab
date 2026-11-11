@@ -9,6 +9,7 @@ import Sentiment from "./pages/Sentiment";
 import Watchlist from "./pages/Watchlist";
 import About from "./pages/About";
 import Briefing from "./pages/Briefing";
+import ChartLab from "./pages/ChartLab";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="watchlist" element={<Watchlist />} />
         <Route path="about" element={<About />} />
         <Route path="briefing" element={<Briefing />} />
+        <Route path="labs" element={<ChartLab />} />
       </Route>
     </Routes>
   );

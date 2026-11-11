@@ -3,9 +3,23 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$py = $env:PYTHON
-if (-not $py) { $py = "python" }
-if (-not (Test-Path $py)) { $py = "python" }
+$py = $env:BREADTHLAB_PYTHON
+if (-not $py) {
+  foreach ($candidate in @(
+    (Join-Path $root ".venv\Scripts\python.exe"),
+    (Join-Path $env:USERPROFILE "anaconda3\envs\breadthlab\python.exe"),
+    (Join-Path $env:USERPROFILE "miniconda3\envs\breadthlab\python.exe")
+  )) {
+    if (Test-Path $candidate) { $py = $candidate; break }
+  }
+}
+if (-not $py) {
+  $cmd = Get-Command python -ErrorAction SilentlyContinue
+  if ($cmd) { $py = $cmd.Source }
+}
+if (-not $py) { throw "Python not found for update" }
+& $py -c "import duckdb, tushare" 2>$null
+if ($LASTEXITCODE -ne 0) { throw "Python environment is missing duckdb/tushare: $py" }
 
 $logDir = Join-Path $root "logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null

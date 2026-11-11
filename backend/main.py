@@ -7,8 +7,13 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sqlite3
+import subprocess
+import sys
 import threading
+import time
+import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -39,6 +44,18 @@ app.json.ensure_ascii = False
 app.json.sort_keys = False
 
 _lock = threading.Lock()
+_update_lock = threading.Lock()
+_update_job: dict[str, Any] = {
+    "id": None,
+    "state": "idle",
+    "progress": 0,
+    "stage": "",
+    "message": "",
+    "started_at": None,
+    "finished_at": None,
+    "trade_date": None,
+}
+
 
 
 def con() -> duckdb.DuckDBPyConnection:
@@ -87,7 +104,180 @@ def one(sql: str, params: list[Any] | None = None) -> dict:
     return r[0] if r else {}
 
 
+# ------------------------------------------------------------------ update job
+class UpdateError(RuntimeError):
+    pass
+
+
+def _job_snapshot() -> dict:
+    with _update_lock:
+        return dict(_update_job)
+
+
+def _job_set(**kw: Any) -> None:
+    with _update_lock:
+        _update_job.update(kw)
+
+
+def _job_progress(value: int, stage: str | None = None, message: str | None = None) -> None:
+    with _update_lock:
+        if _update_job.get("state") != "running":
+            return
+        _update_job["progress"] = max(int(_update_job.get("progress") or 0), min(99, value))
+        if stage:
+            _update_job["stage"] = stage
+        if message:
+            _update_job["message"] = message
+
+
+def _friendly_update_error(text: str) -> str:
+    low = (text or "").lower()
+    if "no module named 'duckdb'" in low or "no module named \"duckdb\"" in low:
+        return "运行环境缺少数据依赖，请用 breadthlab 环境重新执行"
+    if "tushare_token" in low or "token" in low and "not" in low:
+        return "未配置 Tushare Token，暂时无法拉取数据"
+    if "no permission" in low:
+        return "Tushare 权限不足，部分数据源不可用"
+    if "quality" in low or "gate" in low:
+        return "数据质量校验未通过，本次更新已中止"
+    if "empty" in low or "no data" in low:
+        return "数据源尚未返回今日数据，请稍后重试"
+    if "traceback" in low:
+        return "更新脚本执行失败，请稍后重试"
+    clean = " ".join((text or "").split())
+    return (clean[:120] + "…") if len(clean) > 120 else (clean or "更新失败，请稍后重试")
+
+
+def _run_step(args: list[str], stage: str, start: int, end: int) -> tuple[int, str]:
+    _job_progress(start, stage, "正在连接数据源" if stage == "fetching" else "正在重算指标")
+    proc = subprocess.Popen(
+        args,
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    lines: list[str] = []
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+        line = raw.rstrip("\r\n")
+        if not line:
+            continue
+        lines.append(line)
+        if len(lines) > 120:
+            lines.pop(0)
+        if line.startswith("[update]"):
+            if "last=" in line or "pending" in line:
+                _job_progress(14, stage, "发现待更新交易日")
+            elif "calendar" in line:
+                _job_progress(20, stage, "同步交易日历")
+            elif "inserted" in line:
+                _job_progress(38, stage, "正在写入行情")
+            elif "gates" in line or "quality" in line:
+                _job_progress(52, stage, "正在校验数据质量")
+        elif line.startswith("[marts]"):
+            _job_progress(min(end - 2, start + 3), stage, "正在重算指标")
+    code = proc.wait()
+    return code, "\n".join(lines)
+
+
+def _status_trade_date() -> str | None:
+    try:
+        data = json.loads((META / "status.json").read_text(encoding="utf-8"))
+        raw = str(data.get("last_trade_date") or "")
+        return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}" if len(raw) == 8 else (raw or None)
+    except Exception:
+        return None
+
+
+def _run_update_job() -> None:
+    try:
+        _job_set(state="running", progress=4, stage="preparing", message="准备更新数据")
+        code, out = _run_step([sys.executable, "-m", "pipeline.update_daily"], "fetching", 8, 52)
+        if code != 0:
+            raise UpdateError(out)
+
+        _job_progress(58, "building", "正在重算指标")
+        code, out = _run_step([sys.executable, "-m", "pipeline.build_marts"], "building", 58, 86)
+        if code != 0:
+            raise UpdateError(out)
+
+        _job_progress(90, "status", "正在刷新状态")
+        code, out = _run_step([sys.executable, "-m", "pipeline.refresh_status"], "status", 90, 97)
+        if code != 0:
+            raise UpdateError(out)
+
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pipeline.alerts", "--clear"],
+                cwd=str(ROOT),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+        except Exception:
+            pass
+
+        d = _status_trade_date()
+        _job_set(
+            state="done",
+            progress=100,
+            stage="done",
+            message=f"已更新到 {d}" if d else "数据更新完成",
+            trade_date=d,
+            finished_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+        )
+    except Exception as exc:
+        msg = _friendly_update_error(str(exc))
+        _job_set(
+            state="failed",
+            stage="failed",
+            message=msg,
+            finished_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+        )
+        try:
+            from pipeline import alerts
+
+            alerts.write("update", msg)
+        except Exception:
+            pass
+
+
+@app.post("/api/update")
+def start_update():
+    # 自定义头会让跨站表单触发 CORS 预检而失败，避免任意网页触发本地更新
+    if request.headers.get("X-BreadthLab") != "1":
+        abort(403, "missing X-BreadthLab header")
+    with _update_lock:
+        if _update_job.get("state") == "running":
+            return jsonify(dict(_update_job)), 202
+        job_id = uuid.uuid4().hex[:10]
+        _update_job.update(
+            id=job_id,
+            state="running",
+            progress=1,
+            stage="preparing",
+            message="准备更新数据",
+            started_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+            finished_at=None,
+            trade_date=None,
+        )
+        snapshot = dict(_update_job)
+    threading.Thread(target=_run_update_job, name="breadthlab-update", daemon=True).start()
+    return jsonify(snapshot), 202
+
+
+@app.get("/api/update/status")
+def update_status():
+    return jsonify(_job_snapshot())
+
+
 @app.get("/api/meta")
+
+
 def meta():
     base = one("SELECT min(trade_date) f, max(trade_date) d, count(*) n FROM mart_market_day")
     n_stocks = one("SELECT count(*) n FROM mart_stock_latest")["n"]

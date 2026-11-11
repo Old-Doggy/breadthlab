@@ -29,5 +29,5 @@ def test_alert_roundtrip(monkeypatch):
 def test_alert_truncates_long_message(monkeypatch):
     _setup(monkeypatch)
     alerts.write("update", "x" * 1000)
-    assert len(alerts.read()["message"]) == 500
+    assert len(alerts.read()["message"]) == 300
     alerts.clear()

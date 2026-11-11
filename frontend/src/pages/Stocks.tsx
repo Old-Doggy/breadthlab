@@ -225,31 +225,78 @@ export default function Stocks() {
       counts[i] += 1;
     });
     const centers = Array.from({ length: N }, (_, i) => lo + (i + 0.5) * step);
+    const sorted = [...vals].sort((a, b) => a - b);
+    const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+    const sand = p.bg === "#f6f2e8" ? "#b9a67a" : "#c9b98f";
+    const mixHex = (a: string, b: string, t: number) => {
+      const A = a.replace("#", "");
+      const B = b.replace("#", "");
+      return "#" + [0, 2, 4].map((i) => {
+        const av = parseInt(A.slice(i, i + 2), 16);
+        const bv = parseInt(B.slice(i, i + 2), 16);
+        return Math.round(av + (bv - av) * t).toString(16).padStart(2, "0");
+      }).join("");
+    };
+    const binColor = (v: number) => mixHex(sand, v >= 0 ? p.up : p.down, 0.32 + Math.min(1, Math.abs(v) / 5) * 0.68);
     return {
       ...baseChart(p),
-      grid: { left: 4, right: 8, top: 10, bottom: 20, containLabel: true },
+      grid: { left: 8, right: 10, top: 12, bottom: 42, containLabel: true },
+      tooltip: {
+        ...baseChart(p).tooltip,
+        trigger: "axis",
+        formatter: (params: unknown) => {
+          const q = params as { data: { value: number[] } }[];
+          const [v, n] = q[0]?.data?.value ?? [0, 0];
+          return `<div style="font-family:monospace;font-size:11.5px">${v.toFixed(1)}% · ${n} ${lang === "en" ? "stocks" : "只"}</div>`;
+        },
+      },
       xAxis: {
         type: "value",
         min: -11,
         max: 11,
         splitNumber: 4,
         ...axisStyle(p),
+        name: lang === "en" ? "Stock return" : "个股收益",
+        nameLocation: "middle",
+        nameGap: 23,
+        nameTextStyle: { color: p.muted, fontSize: 10.5 },
         splitLine: { show: false },
-        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11, showMinLabel: false, showMaxLabel: false },
+        axisLine: { show: true, lineStyle: { color: p.axis } },
+        axisTick: { show: true, lineStyle: { color: p.axis } },
+        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 10.5, showMinLabel: false, showMaxLabel: false },
       },
-      yAxis: { type: "value", ...axisStyle(p), axisLabel: { show: false } },
+      yAxis: {
+        type: "value",
+        ...axisStyle(p),
+        splitNumber: 3,
+        axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9.5 },
+        splitLine: { lineStyle: { color: p.grid } },
+      },
       series: [
         {
           type: "bar",
           data: counts.map((n, i) => ({
             value: [centers[i], n],
-            itemStyle: { color: centers[i] >= 0 ? p.up : p.down, opacity: 0.8, borderRadius: 1 },
+            itemStyle: { color: binColor(centers[i]), opacity: 0.9, borderRadius: 1 },
           })),
-          barWidth: 6,
+          barWidth: 5,
+          markLine: {
+            silent: true,
+            symbol: "none",
+            data: [
+              { xAxis: median, label: { show: false } },
+            ],
+            lineStyle: { color: p.axis, type: "dashed", width: 1 },
+          },
         },
       ],
     } as never;
-  }, [filtered, p]);
+  }, [filtered, p, lang]);
+
+  const histMedian = useMemo(() => {
+    const vals = filtered.map((s) => s.ret * 100).sort((a, b) => a - b);
+    return vals.length ? vals[Math.floor(vals.length / 2)] : 0;
+  }, [filtered]);
 
   const up = filtered.filter((s) => s.ret > 0).length;
   const flat = filtered.filter((s) => s.ret === 0).length;
@@ -403,7 +450,7 @@ export default function Stocks() {
           ) : (
             <Card
               title={t("stocks.distribution")}
-              subtitle={lang === "en" ? "Cross-section of the filtered universe" : "当前筛选范围的收益分布"}
+              subtitle={lang === "en" ? `Cross-section · x: stock return · median ${histMedian.toFixed(1)}%` : `当前筛选范围的收益分布 · 横轴：个股收益 · 中位 ${histMedian.toFixed(1)}%`}
               right={
                 <span className="pill h-[24px] px-2 text-[11px]">
                   ↑ {ratio(up / Math.max(1, filtered.length), 0)}
@@ -412,7 +459,7 @@ export default function Stocks() {
               padded={false}
               bodyClass="pt-0"
             >
-              <div className="h-[240px] px-2 pb-1">
+              <div className="h-[260px] px-2 pb-1">
                 <EChart option={histOption} />
               </div>
               <div className="grid grid-cols-3 gap-2 px-4 pb-3">

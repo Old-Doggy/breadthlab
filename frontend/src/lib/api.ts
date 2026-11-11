@@ -167,6 +167,17 @@ export interface Distribution {
   };
 }
 
+export interface UpdateJob {
+  id: string | null;
+  state: "idle" | "running" | "done" | "failed";
+  progress: number;
+  stage: string;
+  message: string;
+  started_at: string | null;
+  finished_at: string | null;
+  trade_date: string | null;
+}
+
 export interface UpdateLog {
   date: string;
   status: string;
@@ -378,6 +389,18 @@ export const api = {
   limitQuality: () => (S ? ok(S.limit_quality ?? []) : get<LimitQuality[]>("/api/limit-quality")),
 
   updates: () => (S ? ok(S.updates ?? []) : get<UpdateLog[]>("/api/updates")),
+
+  updateStatus: () =>
+    S
+      ? ok({ id: null, state: "idle", progress: 0, stage: "", message: "", started_at: null, finished_at: null, trade_date: null } as UpdateJob)
+      : get<UpdateJob>("/api/update/status"),
+
+  startUpdate: async (): Promise<UpdateJob> => {
+    if (S) throw new Error("static mode");
+    const res = await fetch("/api/update", { method: "POST", headers: { "X-BreadthLab": "1" } });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return (await res.json()) as UpdateJob;
+  },
 
   reconcile: () => (S ? ok(S.reconcile ?? null) : get<Reconcile | null>("/api/reconcile")),
 

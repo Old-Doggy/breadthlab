@@ -30,6 +30,7 @@ const mix = (a: string, b: string, k: number) => {
 export function treemapChart(p: Palette, stocks: StockRow[], lang = "zh"): EChartsOption {
   const top = [...stocks].sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 30);
   const total = top.reduce((a, s) => a + (s.amount || 0), 0) || 1;
+  const maxAbs = Math.max(...top.map((s) => Math.abs(s.ret || 0)), 0.03);
   const groups = new Map<string, StockRow[]>();
   top.forEach((s) => {
     const k = s.sw_l1 || L(lang, "未分类", "Other");
@@ -39,8 +40,8 @@ export function treemapChart(p: Palette, stocks: StockRow[], lang = "zh"): EChar
   const onLight = p.bg === "#f6f2e8";
   const colorOf = (ret: number) => {
     if (Math.abs(ret) < 0.0004) return p.panel3;
-    const k = Math.min(1, Math.abs(ret) / 0.05);
-    return mix(p.panel3, ret > 0 ? p.up : p.down, 0.55 + k * 0.45);
+    const k = Math.min(1, Math.abs(ret) / maxAbs);
+    return mix(p.panel3, ret > 0 ? p.up : p.down, 0.16 + k * 0.84);
   };
   const data = [...groups.entries()].map(([name, arr]) => ({
     name,
@@ -228,15 +229,26 @@ export function regimeScatter(
   lang: string,
   trailN = 30,
 ): EChartsOption {
-  const keys: RegimeKey[] = ["broad_up", "concentrated_up", "mixed", "broad_down"];
   const amtMax = Math.max(...rows.map((r) => r.amount || 0), 1);
-  const groups: Record<string, { value: number[]; trade_date: string }[]> = {};
-  keys.forEach((k) => (groups[k] = []));
-  rows.forEach((r) => {
-    groups[regimeOf(r)].push({
-      value: [+(r.ew_ret * 100).toFixed(2), +(r.breadth * 100).toFixed(1), r.amount || 0, r.csd],
+  const sand = p.bg === "#f6f2e8" ? "#a8864a" : "#a67f3f";
+  const tone = (v: number) => mix(sand, v >= 0 ? p.up : p.down, 0.35 + Math.min(1, Math.abs(v) / 3) * 0.65);
+  const jitter = (d: string) => {
+    let h = 0;
+    for (let i = 0; i < d.length; i++) h = (h * 31 + d.charCodeAt(i)) | 0;
+    return [(((h % 19) - 9) / 9) * 0.035, ((((h >> 3) % 13) - 6) / 6) * 0.35] as const;
+  };
+  const data = rows.map((r) => {
+    const ret = +(r.ew_ret * 100).toFixed(2);
+    const breadth = +(r.breadth * 100).toFixed(1);
+    const [jx, jy] = jitter(r.trade_date);
+    return {
+      value: [ret + jx, breadth + jy, r.amount || 0, r.csd],
+      rawRet: ret,
+      rawBreadth: breadth,
       trade_date: r.trade_date,
-    });
+      regime: regimeLabel(regimeOf(r), lang),
+      itemStyle: { color: tone(ret), opacity: 0.82 },
+    };
   });
 
   const xsAll = rows.map((r) => r.ew_ret * 100);
@@ -247,32 +259,24 @@ export function regimeScatter(
     ...baseChart(p),
     grid: { left: 10, right: 18, top: 42, bottom: 12, containLabel: true },
     graphic: [
-      { type: "text", left: "9%", top: 44, style: { text: L(lang, "集中上涨", "Narrow rally"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
+      { type: "text", left: "9%", top: 44, style: { text: L(lang, "结构分化", "Divergent"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
       { type: "text", right: "5%", top: 44, style: { text: L(lang, "普涨", "Broad rally"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
       { type: "text", left: "9%", bottom: 32, style: { text: L(lang, "普跌", "Broad selloff"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
-      { type: "text", right: "5%", bottom: 32, style: { text: L(lang, "结构分化", "Divergent"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
+      { type: "text", right: "5%", bottom: 32, style: { text: L(lang, "集中上涨", "Narrow rally"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
     ],
-    legend: {
-      top: 4,
-      right: 8,
-      icon: "circle",
-      itemWidth: 7,
-      itemHeight: 7,
-      itemGap: 14,
-      data: keys.map((k) => regimeLabel(k, lang)),
-      textStyle: { color: p.muted, fontSize: 11.5 },
-    },
     tooltip: {
       ...baseChart(p).tooltip,
       formatter: (params: unknown) => {
-        const q = params as { seriesName: string; data: { value: number[]; trade_date: string } };
-        const [ret, breadth, , csd] = q.data.value;
+        const q = params as { seriesName: string; data: { value: number[]; rawRet: number; rawBreadth: number; trade_date: string; regime: string } };
+        const [, , , csd] = q.data.value;
+        const ret = q.data.rawRet;
+        const breadth = q.data.rawBreadth;
         return `<div style="min-width:158px">
           <div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${q.data.trade_date}</div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "等权收益", "EW return")}</span><b style="color:${ret >= 0 ? p.up : p.down}">${ret.toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${breadth.toFixed(0)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "分化度", "Dispersion")}</span><b>${(csd * 100).toFixed(2)}pp</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "状态", "Regime")}</span><b>${q.seriesName}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "状态", "Regime")}</span><b>${q.data.regime}</b></div>
         </div>`;
       },
     },
@@ -299,15 +303,22 @@ export function regimeScatter(
         z: 1,
         lineStyle: { color: p.accent, width: 1, opacity: 0.45, type: "dashed" },
       },
-      ...keys.map((k) => ({
-        name: regimeLabel(k, lang),
-        type: "scatter" as const,
-        data: groups[k],
-        symbolSize: (val: number[]) => 5 + Math.sqrt((val[2] || 0) / amtMax) * 9,
-        itemStyle: { color: regimeColor(k), opacity: 0.62, borderWidth: 0 },
+      {
+        name: L(lang, "交易日", "Sessions"),
+        type: "scatter",
+        data,
+        symbolSize: (val: number[]) => 3.8 + Math.sqrt((val[2] || 0) / amtMax) * 7,
+        itemStyle: { opacity: 0.68, borderWidth: 0 },
         emphasis: { itemStyle: { opacity: 1 }, scale: 1.25 },
+        markLine: {
+          silent: true,
+          symbol: "none",
+          lineStyle: { color: p.axis, type: "dashed", width: 1 },
+          label: { show: false },
+          data: [{ xAxis: 0 }, { yAxis: 50 }],
+        },
         z: 2,
-      })),
+      },
       {
         type: "effectScatter",
         data: rows

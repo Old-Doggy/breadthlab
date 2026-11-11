@@ -14,6 +14,7 @@ A 股市场宽度与结构面板。基于 Tushare 日频数据计算市场广度
 ## 特性
 
 - 8 个页面，覆盖广度、集中度、行业、个股、情绪、持仓
+- 页面内一键拉取当日数据（Flask 模式）；`/labs` 为图表实验页
 - 指标口径统一，图与数对应；定义见 [metric_contracts.md](docs/metric_contracts.md)
 - 每日增量 + 9 条质量门禁；失败写告警并在页面顶部提示；Tushare 不可用时降级到 akshare
 - 中英双语、深/浅主题、色盲配色、URL 状态、PNG/CSV 导出

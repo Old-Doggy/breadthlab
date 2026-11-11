@@ -128,17 +128,17 @@ export default function Regime() {
     <div className="flex flex-col gap-4">
       <PageHead
         kicker={`${zh ? "市场状态" : "Market state"} / ${rows[0].trade_date} → ${rows[rows.length - 1].trade_date} · ${total}D`}
-        title={zh ? "收益 × 广度：四种状态" : "Return × breadth: four states"}
+        title={zh ? "收益 × 广度：状态云" : "Return × breadth: state cloud"}
         dek={
           zh
-            ? "横轴是等权收益，纵轴是上涨股票占比；按 0% 和 50% 分成四个区间，点的大小是成交额，虚线是最近 30 个交易日的轨迹"
-            : "x = equal-weight return, y = share of advancers; split at 0% and 50%, size = turnover, dashed line = last 30 sessions"
+            ? "颜色随等权收益连续渐变：绿 → 沙 → 红；横轴 0%、纵轴 50% 分四象限，点大小 = 成交额，虚线 = 最近 30 日"
+            : "continuous green → sand → red by EW return; split at 0% / 50%, size = turnover, dashed = last 30 sessions"
         }
         chips={
           <>
-            <span className="pill">{zh ? "点选任意一天" : "Click any day"}</span>
+            <span className="pill">{zh ? "颜色 = 等权收益" : "Colour = EW return"}</span>
             <span className="pill">{zh ? "大小 = 成交额" : "Size = turnover"}</span>
-            <span className="pill">{zh ? "虚线 = 最近 30 日轨迹" : "Dashed = last 30 sessions"}</span>
+            <span className="pill">{zh ? "虚线 = 最近 30 日" : "Trail = last 30 sessions"}</span>
           </>
         }
         right={<Segmented options={RANGES.map((r) => ({ value: r.value, label: r.label }))} value={range} onChange={setRange} />}
@@ -148,7 +148,7 @@ export default function Regime() {
         <div className="col-span-12 xl:col-span-9">
           <Card
             index="01"
-            prov={zh ? "散点 = 交易日；横轴等权收益，纵轴上涨占比，大小按成交额" : "Each dot = a session; x = EW return, y = breadth, size = turnover"}
+            prov={zh ? "散点 = 交易日；颜色 = 等权收益连续渐变，大小 = 成交额，虚线 = 最近 30 日轨迹" : "Each dot = a session; colour = EW return, size = turnover, dashed = 30D trail"}
             title={t("regime.scatter")}
             subtitle={
               lang === "en"
@@ -156,12 +156,19 @@ export default function Regime() {
                 : "每个点是一个交易日 · 大小 = 成交额 · 虚线 = 最近 30 日轨迹"
             }
             right={
-              selRow ? (
-                <div className="flex items-center gap-2">
-                  <span className="mono text-[12px] text-[var(--text-2)]">{selRow.trade_date}</span>
-                  <span className="pill h-[24px] px-2 text-[11px]">{regimeLabel(regimeOf(selRow), lang)}</span>
+              <div className="flex items-center gap-2.5">
+                <div className="hidden items-center gap-1.5 md:flex">
+                  <span className="micro">跌</span>
+                  <span className="h-[6px] w-20 rounded-full" style={{ background: `linear-gradient(90deg, ${p.down}, ${p.bg === "#f6f2e8" ? "#a8864a" : "#a67f3f"}, ${p.up})` }} />
+                  <span className="micro">涨</span>
                 </div>
-              ) : null
+                {selRow && (
+                  <div className="flex items-center gap-2">
+                    <span className="mono text-[12px] text-[var(--text-2)]">{selRow.trade_date}</span>
+                    <span className="pill h-[24px] px-2 text-[11px]">{regimeLabel(regimeOf(selRow), lang)}</span>
+                  </div>
+                )}
+              </div>
             }
             padded={false}
             bodyClass="pt-0"

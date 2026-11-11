@@ -17,12 +17,30 @@ def _path() -> Path:
     return settings.META / "alert.json"
 
 
+def _friendly(message: str) -> str:
+    text = str(message or "").strip()
+    if not text:
+        return "数据更新未完成，请稍后重试"
+    if "Traceback (most recent call last)" in text:
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith(("Traceback", "File \""))]
+        if not lines:
+            return "数据更新未完成，请稍后重试"
+        text = lines[-1]
+    if "No module named" in text:
+        return "更新环境缺少依赖，请使用 breadthlab 环境执行"
+    if "no permission" in text.lower():
+        return "数据源权限不足，本次更新未完成"
+    if "quality" in text.lower() or "gate" in text.lower():
+        return "数据质量校验未通过，本次更新已中止"
+    return text[:300]
+
+
 def write(stage: str, message: str, log: str | None = None) -> dict:
     settings.META.mkdir(parents=True, exist_ok=True)
     payload = {
         "time": datetime.now().astimezone().isoformat(timespec="seconds"),
         "stage": stage,
-        "message": str(message)[:500],
+        "message": _friendly(message),
         "log": log,
     }
     _path().write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

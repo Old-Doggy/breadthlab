@@ -12,7 +12,7 @@ export function breadthArea(p: Palette, rows: MarketDay[]): EChartsOption {
   const x = axisDate(rows);
   const y = rows.map((r) => +(r.breadth * 100).toFixed(1));
   const diverge = rows.map((r) =>
-    r.ew_ret > 0 && r.breadth < 0.45 ? [shortDate(r.trade_date), +(r.breadth * 100).toFixed(1)] : null,
+    r.ew_ret > 0 && r.breadth < 0.5 ? [shortDate(r.trade_date), +(r.breadth * 100).toFixed(1)] : null,
   );
   return {
     ...baseChart(p),
@@ -229,9 +229,9 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string, sel
   ].filter(Boolean) as string[]);
 
   const quadColor = (s: SectorDay) => {
-    if (s.ew_ret > 0 && s.breadth >= 0.6) return p.up;
-    if (s.ew_ret > 0 && s.breadth < 0.45) return p.copper;
-    if (s.ew_ret < 0 && s.breadth < 0.45) return p.down;
+    if (s.ew_ret > 0 && s.breadth >= 0.5) return p.up;
+    if (s.ew_ret > 0 && s.breadth < 0.5) return p.copper;
+    if (s.ew_ret < 0 && s.breadth < 0.5) return p.down;
     return p.muted;
   };
 
