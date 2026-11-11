@@ -1,4 +1,4 @@
-# 每日更新：增量 -> 重算 mart -> 重新导出单文件 dashboard
+﻿# 每日更新：增量 -> 重算 mart -> 重新导出单文件 dashboard
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -46,6 +46,12 @@ try {
     & $py -m pipeline.alerts --set --stage $stage --message $msg --log $log 2>&1 | Out-Null
   } catch {
     Write-Warning "[update] could not write alert: $_"
+  }
+  try {
+    # 失败后仍导出一版：把告警写进单文件，file:// 用户也能看到
+    & $py -m pipeline.export_static 2>&1 | Tee-Object -FilePath $log -Append
+  } catch {
+    Write-Warning "[update] could not export alert build: $_"
   }
   Write-Host "[update] FAILED ($stage): $msg"
   exit 1

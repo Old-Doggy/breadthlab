@@ -32,6 +32,11 @@ try {
   } catch {
     Write-Warning "[rebuild] could not write alert: $_"
   }
+  try {
+    & $py -m pipeline.export_static 2>&1 | Tee-Object -FilePath $log -Append
+  } catch {
+    Write-Warning "[rebuild] could not export alert build: $_"
+  }
   Write-Host "[rebuild] FAILED ($stage): $msg"
   exit 1
 }
