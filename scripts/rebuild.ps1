@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$py = "D:\Anaconda\envs\breadthlab\python.exe"
+$py = $env:PYTHON
+if (-not $py) { $py = "python" }
 if (-not (Test-Path $py)) { $py = "python" }
 
 $logDir = Join-Path $root "logs"

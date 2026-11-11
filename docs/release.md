@@ -32,7 +32,7 @@
 ## 5. 推送命令
 
 ```powershell
-cd .
+cd breadthlab
 git remote add origin git@github.com:<用户名>/breadthlab.git
 git branch -M main
 git push -u origin main

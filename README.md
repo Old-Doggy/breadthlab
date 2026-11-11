@@ -1,247 +1,204 @@
-# BreadthLab · A股市场结构终端
+**简体中文** | [English](README.en.md)
 
-> 不回答“今天涨还是跌”，而是回答 **这波涨跌由谁参与、由谁推动、内部是否一致**。
+# BreadthLab
 
-BreadthLab 把指数涨跌拆成四层：**市场广度 → 集中程度 → 行业结构 → 个股分化**，
-用一套统一的指标口径与“安静的研究终端”风格（深色/浅色双主题），把“指数看不见的部分”做成可以每天打开的操作面板。
+A 股市场宽度与结构终端。不猜明天涨跌，先把「谁在参与、谁在推动、内部是否一致」看清楚。
 
-![Today](docs/screenshots/today.png)
+[![CI](https://github.com/Old-Doggy/breadthlab/actions/workflows/ci.yml/badge.svg)](https://github.com/Old-Doggy/breadthlab/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 
----
+![今日盘面](docs/screenshots/today.png)
 
-## 1. 它解决什么问题
+## 它回答什么
 
-指数是加权结果：指数涨 1%，可能意味着 70% 的股票都在涨，也可能只有 3 只权重股在拉。
-只看看指数，你无法回答：
+指数是加权结果。指数涨 1%，可能 70% 的股票都在涨，也可能只有三只权重股在拉。只盯指数，下面这些问题没有答案：
 
 - 这波行情有多少股票真正参与？
-- 涨幅是不是集中在少数股票、少数行业？
-- 行业平均收益背后，是个股普涨还是龙头独舞？
-- 涨停家数、连板高度和封板质量处于什么位置？
-- 我的持仓今天是被普涨带起来的，还是被少数股票带的？
+- 涨幅是多数股票贡献，还是少数权重股拉出来的？
+- 行业平均收益背后，是普涨还是龙头独舞？
+- 涨停、连板、封板质量处在什么位置？
+- 自选组合今天是被普涨带起来的，还是被几只股票带的？
 
-BreadthLab 用 8 个页面把这些问题变成可交互的证据链。
+BreadthLab 用 8 个页面把这些拆开，指标口径统一，图与数对得上。
 
----
+## 功能
 
-## 1.4 v0.3 前端重构
+- **8 个页面**：今日盘面、市场结构、市场状态、行业参与、个股分化、情绪极端、自选组合、方法与数据
+- **口径一致**：广度、等权/市值加权、HHI、Top10 贡献与占比、CSD、IQR 全站一套定义
+- **交互**：四象限散点、行业气泡、累计收益曲线、排名迁移、K 线、贡献榜下钻
+- **双语与主题**：中/英切换、深/浅主题、色盲友好配色（蓝/橙）
+- **可分享**：URL 状态（`?range=1Y`、`?sector=电子`）、图表 PNG、表格 CSV
+- **单文件导出**：JS/CSS/字体/数据全部内联，双击即可离线打开
+- **每日更新**：增量抓取 → 9 条质量门禁 → core → mart → 导出；失败不会发布半成品
+- **备用数据源**：Tushare 故障时，`daily/daily_basic/stk_limit/adj_factor` 自动降级到 akshare
 
-- **设计系统 v3**：C 骨架 + B 叙事 + A 纪律；琥珀金为主、铜为辅，红绿只表方向
-- **今日盘面**：衬线结论句 + 3 个主数字；5 KPI；三件事/贡献/气泡/分布
-- **市场结构**：区间读数 + 420px 主图 + 集中度/分化度双卡；口径脚注
-- **行业参与**：成交额 treemap 市场云图 + 四象限气泡 + 领涨/落后累计收益曲线（12M / 24M）
-- **市场状态 / 情绪极端**：四象限标签、连板拆轴、新高新低拆轴、封板质量单轴
-- **全局**：⌘K 命令面板（支持股票代码/名称/行业搜索，点击个股直达详情）、底部数据状态栏、移动端 5 tab、浅色纸感主题、`?theme=light` 预览
-- **自选组合**：空状态三步引导、行业暴露、今日盈亏贡献、可编辑股数/成本
-- **可读性**：正文 13.5px、标签 11.5px、脚注 11px、图表轴 11.5–12px；提高暗色辅助文字对比度，顶栏/侧栏按钮 34/60px
-- **品牌**：使用用户提供的 icon 方案 B（深蓝底 + 青绿金融图表），替换默认浏览器图标
-- **交互**：bump 图悬停聚焦 + 关键周排名；气泡/treemap/累计收益曲线/榜单点击下钻；轮动柱悬停显示数值
+## 页面
 
----
-## 1.5 v0.2 新增
-
-- **自选持仓**：股数/成本/盈亏/权重/今日盈亏，CSV 导入导出
-- **行业轮动**：26 周排名迁移矩阵 + 轮动强度曲线
-- **个股 K 线**：详情卡蜡烛图 + 成交量
-- **封板质量**：封单额/流通市值中位数、开板比例（历史区间）
-- **状态统计**：各状态平均持续 + 后续 5/20 日（描述性）
-- **可用性**：色盲友好配色、图表 aria-label、URL 状态、PNG/CSV 导出
-
----
-## 2. 页面
-
-| 页面 | 回答的问题 | 核心图 |
+| 页面 | 回答的问题 | 核心内容 |
 |---|---|---|
-| **今日盘面** | 今天的收益、广度和集中度如何？ | 一句话结论 + 收益×广度双联图 + 贡献榜 |
-| **市场结构** | 收益与广度长期如何背离？ | 收益/广度时间序列 + 集中度 + 分化度 |
-| **市场状态** | 每天落在“收益×广度”的哪个位置？ | 四象限散点 + 30 日轨迹 + 相似日 |
-| **行业参与** | 哪个行业是真普涨，哪个只是龙头拉？ | 行业气泡 + 累计收益曲线 + 排名 bump + 轮动柱 + 行业内领涨/领跌 |
-| **个股分化** | 行业均值之下个股长什么样？ | 市值×收益散点 + 分布直方图 + 明细表 |
-| **情绪极端** | 涨停、连板和新高低处于什么位置？ | 涨跌停家数 + 连板梯队 + 新高新低 + 两融 |
-| **自选组合** | 我的组合被什么带动？ | 行业暴露 + 今日盈亏贡献 + 组合 KPI + 可编辑明细 |
-| **方法与数据** | 数据可信吗？口径是什么？ | 血缘 + 9 条质量门禁 + 更新日志 + 源间对账 |
+| **今日盘面** | 今天是什么性质的一天？ | 结论句 + 5 个 KPI + 收益×广度 + 贡献 Top5 |
+| **市场结构** | 收益与广度长期如何背离？ | 收益/广度序列 + 集中度 + 分化度 |
+| **市场状态** | 今天落在收益×广度的哪个位置？ | 四象限散点 + 30 日轨迹 + 状态统计 |
+| **行业参与** | 哪个行业是真普涨，哪个只是龙头拉？ | 气泡 + 累计收益曲线 + 排名迁移 + 轮动强度 |
+| **个股分化** | 行业均值之下个股长什么样？ | 市值×收益散点 + 分布 + 明细表 + 个股详情 |
+| **情绪极端** | 涨停、连板和新高低处于什么位置？ | 涨跌停 + 连板梯队 + 新高新低 + 两融 |
+| **自选组合** | 我的组合被什么带动？ | 行业暴露 + 盈亏贡献 + 可编辑股数/成本 |
+| **方法与数据** | 数据可信吗？口径是什么？ | 血缘 + 质量门禁 + 更新日志 + 源间对账 |
 
-### 每日简报（PDF / PNG）
-
-`#/briefing` 是打印优化的 A4 单页：一句话结论 + 6 个 KPI + 两张核心图 + 行业强弱 + 最大贡献个股 + 今日三条。
-
-```powershell
-pwsh -File scripts\briefing.ps1
-# -> data/snapshots/YYYYMMDD/briefing.pdf / briefing.png
-```
-
-简报使用 light 主题、A4 版式，可直接贴进周报或打印。
-
-### 双语
-
-界面支持中/英切换，也可用 URL 直接指定：`BreadthLab.html?lang=en#/`。
-英文覆盖导航、页面文案、KPI、核心图表 tooltip 与金额单位（`¥2.90T`）；
-行业名与股票名保留中文（数据本身即中文分类），这是有意的取舍。
-
-### 移动端
-
-`< 768px` 自动切换为底部导航 + 单列布局，图表高度、KPI 字号、表格列宽都会收缩；已在 390×844 下逐页校对。
-
-完整截图见 `docs/screenshots/`。
-
-### 界面预览
-
-| 行业参与 | 自选持仓 |
+| 行业参与 | 自选组合 |
 |---|---|
-| ![Sectors](docs/screenshots/sectors.png) | ![Watchlist](docs/screenshots/watchlist.png) |
-| **市场状态** | **情绪极端** |
-| ![Regime](docs/screenshots/regime.png) | ![Sentiment](docs/screenshots/sentiment.png) |
+| ![行业参与](docs/screenshots/sectors.png) | ![自选组合](docs/screenshots/watchlist.png) |
 
-色盲友好模式：`colorblind-today.png`；英文界面：`en-today.png`；移动端：`mobile-today.png`。
+更多截图在 [`docs/screenshots/`](docs/screenshots/)，含英文界面、色盲模式、移动端。
 
----
+## 快速开始
 
-## 3. 快速开始
+### 0. 准备
 
-### 方式 A：直接打开（零依赖）
+- Python **3.12**（推荐 conda）
+- Node **20+**（只改前端时需要）
+- **Tushare Pro token**：免费注册即可，`daily` 等基础接口需要 2000 积分
+- 操作系统：Windows / macOS / Linux 都能跑；定时任务与简报脚本目前偏 Windows
 
-双击 `frontend/dist/BreadthLab.html`。
-这是一个 **单文件仪表盘**（内联 JS/CSS/字体/数据，约 14 MB），可在 `file://` 下完整交互。
+### 1. 安装
 
-### 方式 B：本机服务（可每日更新）
-
-```powershell
-# 1) 环境（已存在则跳过）
-conda create -y -n breadthlab python=3.12
-D:\Anaconda\envs\breadthlab\python.exe -m pip install -r requirements.txt
-
-# 2) 配置 token
-Copy-Item .env.example .env
-#   编辑 .env，填入 TUSHARE_TOKEN=...
-
-# 3) 从本地快照构建（一次性，约 1 分钟）
-$py = "D:\Anaconda\envs\breadthlab\python.exe"
-& $py -m pipeline.bootstrap
-& $py -m pipeline.build_marts
-& $py -m pipeline.export_static
-
-# 4a) 打开单文件
-start frontend\dist\BreadthLab.html
-
-# 4b) 或起本地服务
-& $py -m backend.main          # http://127.0.0.1:8000
+```bash
+git clone https://github.com/Old-Doggy/breadthlab.git
+cd breadthlab
+conda create -n breadthlab python=3.12 -y
+conda activate breadthlab
+pip install -r requirements.txt
+cp .env.example .env        # Windows: copy .env.example .env
 ```
 
-### 前端开发与验收
+编辑 `.env`：
 
-```powershell
+```ini
+TUSHARE_TOKEN=你的token
+# 可选：本地 parquet 快照目录（没有就用 Tushare API）
+# BREADTHLAB_SOURCE=./data/snapshot
+```
+
+### 2. 构建数据
+
+**方式 A：Tushare API（没有本地快照时）**
+
+```bash
+python -m pipeline.bootstrap_api --start 20240101
+```
+
+每个交易日 7 个接口调用，历史越长耗时越久（约 1–2 秒/日）。`limit_list_d` 需要额外积分，无权限会自动跳过并记录 warning。
+
+**方式 B：本地 parquet 快照（更快，可全量历史）**
+
+按 [`docs/data_setup.md`](docs/data_setup.md) 的目录结构准备好 Tushare parquet 导出，然后：
+
+```bash
+python -m pipeline.bootstrap
+```
+
+两种方式完成后都执行：
+
+```bash
+python -m pipeline.build_marts
+```
+
+### 3. 运行
+
+本地 API：
+
+```bash
+python -m backend.main          # http://127.0.0.1:8000
+```
+
+导出单文件：
+
+```bash
 cd frontend
 npm install
-npm run dev        # http://localhost:5173
-npm run check      # tsc --noEmit + vite build
+npm run build
+cd ..
+python -m pipeline.export_static
+# 双击 frontend/dist/BreadthLab.html
 ```
 
-浅色预览 `http://localhost:5173/?theme=light#/`，命令面板预览 `?cmd=1`。
-### 每日自动更新
+前端开发：
 
-```powershell
-# 手动
-pwsh -File scripts\update.ps1
-
-# 注册计划任务（周一至周五 17:35）
-pwsh -File scripts\install_task.ps1
+```bash
+cd frontend
+npm run dev                     # http://localhost:5173
 ```
 
-更新链路：`Tushare 增量 → 质量门禁 → core → mart → 单文件导出`。
-任何一步失败都不会发布半成品，`data/meta/status.json` 会记录状态，页面顶部会显示数据截止日。
+### 4. 每日更新
 
----
-
-## 4. 数据与口径
-
-### 4.1 数据源
-
-- 主源：**Tushare Pro**（`daily`、`daily_basic`、`adj_factor`、`stk_limit`、`limit_list_d`、`moneyflow`、`index_daily`）
-- 备用源：**akshare / 东方财富**（免费、无需 token）——`daily`、`daily_basic`、`stk_limit`、`adj_factor` 当日自动降级；指数与跨源对账也用它
-- 本地快照：`./data/snapshot`（按 `ts_code` 重排的 parquet，2014-01 → 2026-05-22；Tushare 导出，不算独立源）
-- 降级细节、覆盖范围与已知限制见 [`docs/data_sources.md`](docs/data_sources.md)；手动探测：`python -m pipeline.update_daily --source akshare --dry-run`
-
-### 4.2 分层
-
-```
-F:/ 快照 或 Tushare API
-        │  bootstrap / update_daily（幂等、按日批量、质量门禁）
-        ▼
-data/raw/*.parquet            原始落地（保留上游字段）
-        ▼
-data/lake.duckdb               core_stock_day / core_limit_event / core_index_day ...
-        ▼
-                               feat_stock（复权、MA、新高、涨跌停标记）
-                               mart_market_day / mart_sector_day / 月度聚合
-        ▼
-Flask API  ──►  React + ECharts（深/浅主题、中/英）
-        └────►  export_static.py ──► 单文件 HTML
+```bash
+python -m pipeline.update_daily
+python -m pipeline.build_marts
+python -m pipeline.export_static
 ```
 
-### 4.3 关键口径（全站唯一）
+Windows 可以直接用 `pwsh -File scripts/update.ps1`，并用 `scripts/install_task.ps1` 注册工作日 17:35 的计划任务；macOS/Linux 用 cron 调同样的三个命令。
+
+## 数据与口径
+
+### 数据源
+
+- **主源**：Tushare Pro（`daily`、`daily_basic`、`adj_factor`、`stk_limit`、`limit_list_d`、`moneyflow`、`margin`、`index_daily`）
+- **备用源**：akshare / 东方财富，免费、无需 token；`daily`、`daily_basic`、`stk_limit`、`adj_factor` 当日自动降级
+- **不随仓库分发数据**：DuckDB、parquet、token 都不在 Git 里，需要按上面的步骤自己构建
+
+### 关键口径
 
 | 指标 | 定义 |
 |---|---|
-| 上涨占比 `breadth` | N(涨) / (N(涨)+N(跌))，剔除平盘与无有效收益 |
-| 等权收益 `ew_ret` | mean(pct_chg/100)，当日有效样本 |
-| 市值加权 `cw_ret` | Σ wᵢrᵢ，w 用**前一日** `circ_mv` 归一（避免同日价格内生） |
+| 上涨占比 `breadth` | N(涨) / (N(涨)+N(跌))，平盘剔除 |
+| 等权收益 `ew_ret` | mean(pct_chg / 100) |
+| 市值加权 `cw_ret` | Σ wᵢrᵢ，权重用**前一日**流通市值归一 |
 | 集中度 `hhi` | Σ wᵢ² × 10000 |
-| Top10 波动占比 | Top10 权重股 \|wᵢrᵢ\| / Σ\|wᵢrᵢ\|，有界 0–1 |
+| Top10 贡献 | Σ_{Top10} wᵢrᵢ × 100（pp） |
+| Top10 波动占比 | Σ_{Top10} \|wᵢrᵢ\| / Σ\|wᵢrᵢ\|，0–1 |
 | 分化度 `csd` | 横截面收益标准差（pp） |
-| 涨停 | `close ≥ up_limit × 0.999`（用 `stk_limit` 真实涨跌停价，不猜 10%/20%） |
+| 涨停 | `close ≥ up_limit × 0.999`，用 `stk_limit` 的真实涨跌停价 |
 | 新高 | `adj_close ≥ 过去 252 日最高`，且历史 ≥ 250 日 |
-| 行业 | Tushare 行业 → 31 个申万一级（`config/industry_bridge.csv`），覆盖率 99.9% |
+| 行业 | Tushare 行业 → 31 个申万一级，覆盖 99.9% |
 
-行业映射是已知最脏的一环：`index_member_all` 本地为空，`bak_basic.industry` 标签会漂移。
-当前采用「静态标签 + 人工桥接表」，未映射股票计入“未分类”并在 About 页标注。
+行业映射是已知最脏的一环：`index_member_all` 本地为空，`bak_basic.industry` 会漂移。当前用「静态标签 + 人工桥接表」，未映射股票计入“未分类”，页面会标注。
 
----
-
-## 5. 工程结构
+## 工程结构
 
 ```
 breadthlab/
-├─ pipeline/            # bootstrap / build_marts / update_daily / export_static / backfill_index
-├─ backend/             # Flask API（market / sectors / stocks / watchlist / meta）
-├─ frontend/            # Vite + React + TypeScript + Tailwind + ECharts
-│  └─ src/{pages,components,lib}
-├─ config/              # industry_bridge.csv
-├─ data/                # 不入库：lake.duckdb / marts / static-data.json
-├─ scripts/             # update.ps1 / dev.ps1 / install_task.ps1
-├─ docs/                # 口径、审计、截图
-└─ tests/               # pytest：指标 golden values + API 契约
+├─ pipeline/       # bootstrap / bootstrap_api / build_marts / update_daily / export_static / quality_gates
+├─ backend/        # Flask API
+├─ frontend/       # Vite + React + TypeScript + Tailwind + ECharts
+├─ config/         # industry_bridge.csv、universe.yaml、data_source_registry.yaml
+├─ scripts/        # update.ps1 / dev.ps1 / briefing.ps1 / install_task.ps1
+├─ tests/          # 指标 golden values、API 契约、锁与备用源
+└─ docs/           # 口径、审计、数据源、截图
 ```
 
-技术选择：**DuckDB**（12M 行聚合毫秒级）+ **Flask**（同步、零异步依赖、Windows 稳定）+
-**React/ECharts**（交互与视觉上限）+ **单文件导出**（可直接分享/离线打开）。
+技术栈：DuckDB（本地列存，聚合快）+ Flask（同步、依赖少）+ React/ECharts（交互与视觉）+ 单文件导出（离线可看）。
 
----
+## 已知限制
 
-## 6. 已知限制
+- `limit_list_d` 需要额外积分；无权限时炸板率显示 `—`，连板高度改用价格判定
+- 两融 T+1 发布，最新一个交易日显示 `—`
+- 北向资金 2024-08-19 后口径断裂，不做跨期序列
+- 行业分类为静态映射，历史行业归属存在前视偏差
+- 全部为**描述性分析**，不构成预测或投资建议
 
-- 数据已增量更新至 **2026-11-10**；`limit_list_d` 无接口权限，新数据的炸板率显示 `—`，连板高度改由涨跌停价 + 连续涨停天数计算。
-- 两融数据 T+1 发布，最新一个交易日显示 `—`。
-- 北向资金 2024-08-19 后口径断裂（净买入 → 成交额），**不做跨期时间序列**。
-- 行业分类为静态映射，历史行业归属存在前视偏差；停牌/新股首日已按规则剔除。
-- 全部为**描述性分析**，不构成预测或投资建议。
+## Roadmap
 
----
-
-## 7. Roadmap
-
-- [x] 每日简报自动生成 PDF/PNG（无头 Edge）
-- [x] 自选持仓：股数/成本/盈亏/权重 + CSV
-- [x] 行业轮动矩阵与轮动强度
-- [x] 个股 K 线 + 3 年 PE 分位
-- [x] 封板质量与状态持续/后续统计
-- [x] 数据质量看板（9 条门禁 + 更新日志 + 源间对账）
+- [x] 每日简报 PDF/PNG
+- [x] 自选持仓盈亏、行业轮动、K 线、PE 分位
+- [x] 9 条质量门禁 + 更新日志 + 源间对账
 - [x] 色盲模式、URL 状态、PNG/CSV 导出
-- [ ] 行业映射升级为申万 PIT 成员（`index_member_all`）
+- [ ] 行业映射升级为申万 PIT 成员
 - [ ] Brinson 简化归因
-- [ ] 更新失败桌面/SMTP 告警
+- [ ] 更新失败告警（桌面 / SMTP）
 
----
-
-## 8. License
+## License
 
 MIT © 2026 BreadthLab contributors

@@ -1,6 +1,7 @@
 ﻿# 开发模式：Flask API (8000) + Vite (5173)
 $root = Split-Path -Parent $PSScriptRoot
-$py = "D:\Anaconda\envs\breadthlab\python.exe"
+$py = $env:PYTHON
+if (-not $py) { $py = "python" }
 if (-not (Test-Path $py)) { $py = "python" }
 
 Start-Process pwsh -ArgumentList @(

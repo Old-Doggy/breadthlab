@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 
 # ---------------------------------------------------------------- 路径
-SOURCE_ROOT = Path(os.getenv("BREADTHLAB_SOURCE", r"./data/snapshot"))
+SOURCE_ROOT = Path(os.getenv("BREADTHLAB_SOURCE", str(ROOT / "data" / "snapshot")))
 DATA = ROOT / "data"
 RAW = DATA / "raw"
 MARTS = DATA / "marts"
