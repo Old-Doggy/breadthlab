@@ -22,7 +22,8 @@
 ## 广度
 
 - `breadth = N(ret>0) / (N(ret>0) + N(ret<0))`，平盘剔除。
-- `ma20_breadth / ma60_breadth / ma250_breadth = N(adj_close > MA) / N_valid`。
+- `ma20_breadth / ma60_breadth / ma250_breadth = N(adj_close > MA) / N(有足够历史)`：
+  分母分别要求 `n_hist_all ≥ 20 / ≥ 60 / n_hist252 ≥ 250`，避免新股用不完整窗口的均线。
 
 ## 集中度
 
@@ -40,7 +41,8 @@
 ## 情绪
 
 - 涨停：`close ≥ up_limit × 0.999`；跌停：`close ≤ down_limit × 1.001`（`stk_limit` 真实价）。
-- 炸板率：`broken / (limit_up + broken)`（来自 `limit_list_d`）。
+- `limit_up_n` 为价格口径，**含 ST/风险警示股**（5% 涨停）；`limit_up_ex_st_n` 为剔除 5% 涨停后的口径，与 Tushare `limit_list_d` 可比；`limit_up_st_n = limit_up_n - limit_up_ex_st_n`。
+- 炸板率：`broken_rate = broken / (limit_up_list_n + broken)`，分子分母都来自 `limit_list_d`（官方口径，不含 ST）；无权限时为空。
 - 连板：`limit_times` 的最大值；`streak_n = count(limit_times ≥ 2)`。
 - 新高/新低：`adj_close ≥ 252 日最高` / `≤ 252 日最低`，需 ≥250 日历史。
 

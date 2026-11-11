@@ -92,7 +92,7 @@ CREATE OR REPLACE TABLE mart_market_day AS
 WITH f AS (
     SELECT trade_date, ts_code, ret, circ_mv, prev_circ_mv, amount,
            turnover_rate, adv, dec, flat, is_limit_up, is_limit_down, limit_streak,
-           adj_close, ma20, ma60, ma250, hi252, lo252, n_hist252
+           adj_close, ma20, ma60, ma250, hi252, lo252, n_hist252, n_hist_all, pre_close, up_limit
     FROM feat_stock
     WHERE NOT is_new_stock
 ),
@@ -123,15 +123,19 @@ ret_agg AS (
            sum(amount) * 1000                               AS amount,
            avg(turnover_rate)                               AS turnover_rate,
            count(*) FILTER (WHERE is_limit_up)              AS limit_up_n,
+           count(*) FILTER (WHERE is_limit_up AND (up_limit / nullif(pre_close, 0) - 1) >= 0.06) AS limit_up_ex_st_n,
            count(*) FILTER (WHERE is_limit_down)            AS limit_down_n,
            max(CASE WHEN is_limit_up THEN limit_streak END)  AS max_streak_price,
            count(*) FILTER (WHERE limit_streak >= 2)         AS streak_n_price,
            count(*) FILTER (WHERE limit_streak = 1)          AS first_board_n_price,
            count(*) FILTER (WHERE adj_close >= hi252 AND n_hist252 >= 250) AS new_high_n,
            count(*) FILTER (WHERE adj_close <= lo252 AND n_hist252 >= 250) AS new_low_n,
-           count(*) FILTER (WHERE adj_close > ma20)         AS above_ma20_n,
-           count(*) FILTER (WHERE adj_close > ma60)         AS above_ma60_n,
-           count(*) FILTER (WHERE adj_close > ma250 AND ma250 IS NOT NULL) AS above_ma250_n
+           count(*) FILTER (WHERE n_hist_all >= 20)          AS n_hist20,
+           count(*) FILTER (WHERE n_hist_all >= 60)          AS n_hist60,
+           count(*) FILTER (WHERE n_hist252 >= 250)          AS n_hist250,
+           count(*) FILTER (WHERE adj_close > ma20 AND n_hist_all >= 20)   AS above_ma20_n,
+           count(*) FILTER (WHERE adj_close > ma60 AND n_hist_all >= 60)   AS above_ma60_n,
+           count(*) FILTER (WHERE adj_close > ma250 AND n_hist252 >= 250)  AS above_ma250_n
     FROM w2
     GROUP BY trade_date
 ),
@@ -139,7 +143,7 @@ cap_agg AS (
     SELECT trade_date,
            sum(weight * ret)                                AS cw_ret,
            sum(weight * weight) * 10000                     AS hhi,
-           sum(weight * ret)                                 AS top10_contrib,
+           sum(weight * ret) FILTER (WHERE rn_w <= 10)       AS top10_contrib,
            sum(abs(weight * ret)) FILTER (WHERE rn_w <= 10) / nullif(sum(abs(weight * ret)), 0) AS top10_share,
            sum(ret) FILTER (WHERE ret > 0 AND rn_r <= ceil(0.05 * n_all)) / nullif(sum(ret) FILTER (WHERE ret > 0), 0) AS gain_share_top5pct,
            max(weight)                                     AS max_weight
@@ -203,10 +207,14 @@ SELECT r.trade_date,
        r.streak_n_price   AS streak_n,
        r.first_board_n_price AS first_board_n,
        l.limit_fd_amount,
+       r.limit_up_ex_st_n,
+       (r.limit_up_n - r.limit_up_ex_st_n)                    AS limit_up_st_n,
+       CASE WHEN l.broken_n IS NOT NULL AND l.limit_up_list_n IS NOT NULL
+            THEN l.broken_n::DOUBLE / nullif(l.limit_up_list_n + l.broken_n, 0) END AS broken_rate,
        r.new_high_n, r.new_low_n,
-       r.above_ma20_n::DOUBLE / nullif(r.n_valid, 0)         AS ma20_breadth,
-       r.above_ma60_n::DOUBLE / nullif(r.n_valid, 0)         AS ma60_breadth,
-       r.above_ma250_n::DOUBLE / nullif(r.n_valid, 0)        AS ma250_breadth,
+       r.above_ma20_n::DOUBLE / nullif(r.n_hist20, 0)         AS ma20_breadth,
+       r.above_ma60_n::DOUBLE / nullif(r.n_hist60, 0)         AS ma60_breadth,
+       r.above_ma250_n::DOUBLE / nullif(r.n_hist250, 0)       AS ma250_breadth,
        i.hs300_ret, i.zz500_ret, i.zz1000_ret, i.sse_ret,
        f.flow_breadth, f.net_mf_amount, f.main_net_amount,
        m.rzye, m.rzmre

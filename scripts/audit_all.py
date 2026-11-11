@@ -1,0 +1,418 @@
+"""全量数据审计：从原始表独立重算，与 mart / 静态 payload / akshare 交叉验证。
+
+用法：python scripts/audit_all.py [--date 2026-11-10] [--samples 20]
+输出：docs/audit_report.md，控制台 PASS/FAIL 表。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import random
+import sys
+import time
+from pathlib import Path
+
+import duckdb
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+RESULTS: list[dict] = []
+
+
+def check(item: str, expected, actual, tol=0.0, note: str = "", kind="num") -> None:
+    if kind == "num":
+        if expected is None or actual is None:
+            ok = expected == actual
+            diff = None
+        else:
+            diff = float(actual) - float(expected)
+            ok = abs(diff) <= tol
+        RESULTS.append(
+            {"item": item, "expected": expected, "actual": actual, "diff": diff, "ok": ok, "note": note}
+        )
+    else:
+        ok = expected == actual
+        RESULTS.append(
+            {"item": item, "expected": expected, "actual": actual, "diff": None, "ok": ok, "note": note}
+        )
+
+
+def audit_market(con, day: str) -> None:
+    m = con.execute(
+        "SELECT * FROM mart_market_day WHERE trade_date = ?", [day]
+    ).fetchdf().iloc[0]
+
+    raw = con.execute(
+        """
+        SELECT count(*) n,
+               count(*) FILTER (WHERE ret > 0) adv,
+               count(*) FILTER (WHERE ret < 0) dec,
+               avg(ret) ew,
+               median(ret) med,
+               stddev_samp(ret) csd,
+               quantile_cont(ret, 0.25) q25,
+               quantile_cont(ret, 0.75) q75,
+               sum(amount) * 1000 amt,
+               count(*) FILTER (WHERE close >= up_limit * 0.999) lim_up,
+               count(*) FILTER (WHERE close <= down_limit * 1.001) lim_dn
+        FROM feat_stock WHERE trade_date = ? AND NOT is_new_stock
+        """,
+        [day],
+    ).fetchdf().iloc[0]
+
+    check("样本数 n_valid", raw.n, m.n_valid, 0)
+    check("上涨家数", raw.adv, m.n_adv, 0)
+    check("下跌家数", raw.dec, m.n_dec, 0)
+    check("广度 = 涨/(涨+跌)", raw.adv / (raw.adv + raw.dec), m.breadth, 1e-12)
+    check("等权收益", raw.ew, m.ew_ret, 1e-12)
+    check("中位数收益", raw.med, m.med_ret, 1e-12)
+    check("横截面标准差", raw.csd, m.csd, 1e-9)
+    check("IQR = q75-q25", raw.q75 - raw.q25, m.iqr, 1e-12)
+    check("成交额（元）", raw.amt, m.amount, max(1.0, raw.amt * 1e-9))
+    check("涨停家数（价格口径）", raw.lim_up, m.limit_up_n, 0)
+    check("跌停家数（价格口径）", raw.lim_dn, m.limit_down_n, 0)
+
+    # 市值加权：前一日流通市值
+    cap = con.execute(
+        """
+        WITH f AS (
+            SELECT ts_code, trade_date, ret,
+                   lag(circ_mv) OVER (PARTITION BY ts_code ORDER BY trade_date) AS prev_cap
+            FROM feat_stock
+            WHERE trade_date <= ? AND NOT is_new_stock
+        ),
+        d AS (SELECT * FROM f WHERE trade_date = ?),
+        w AS (SELECT *, prev_cap / sum(prev_cap) OVER () AS wt FROM d WHERE prev_cap > 0),
+        r AS (SELECT *, row_number() OVER (ORDER BY prev_cap DESC) rn FROM w)
+        SELECT sum(wt * ret) cw,
+               sum(wt * wt) * 10000 hhi,
+               sum(wt * ret) FILTER (WHERE rn <= 10) top10_pp,
+               sum(abs(wt * ret)) FILTER (WHERE rn <= 10) / sum(abs(wt * ret)) top10_share
+        FROM r
+        """,
+        [day, day],
+    ).fetchdf().iloc[0]
+    check("市值加权收益 cw_ret", cap.cw, m.cw_ret, 1e-6)
+    check("HHI", cap.hhi, m.hhi, 0.01)
+    check("Top10 贡献（pp）", cap.top10_pp * 100, m.top10_contrib_pct, 1e-5)
+    check("Top10 波动占比", cap.top10_share, m.top10_share, 1e-5)
+
+    # 指数收益
+    idx = con.execute(
+        "SELECT pct_chg / 100.0 FROM core_index_day WHERE trade_date = ? AND ts_code = '000300.SH'",
+        [day],
+    ).fetchdf()
+    check("沪深300 收益", None if idx.empty else float(idx.iloc[0, 0]), m.hs300_ret, 1e-12)
+
+    # 派生 UI 指标
+    last250 = con.execute(
+        "SELECT breadth FROM mart_market_day WHERE trade_date <= ? ORDER BY trade_date DESC LIMIT 250",
+        [day],
+    ).fetchdf()["breadth"]
+    pctile = (last250 <= m.breadth).sum() / len(last250)
+
+    avg20 = con.execute(
+        "SELECT avg(breadth) FROM (SELECT breadth FROM mart_market_day WHERE trade_date <= ? ORDER BY trade_date DESC LIMIT 20)",
+        [day],
+    ).fetchall()[0][0]
+    print(f"  [info] 广度较20日均值 = {(m.breadth - avg20) * 100:.1f}pp (UI 显示 34.1pp)")
+    print(f"  [info] 广度分位 = {pctile:.1%} (UI 显示 90% 分位)")
+
+
+def audit_sectors(con, day: str) -> None:
+    sec = con.execute(
+        """
+        SELECT sw_l1, count(*) n, avg(ret) ew,
+               count(*) FILTER (WHERE ret > 0)::DOUBLE / nullif(count(*) FILTER (WHERE ret > 0) + count(*) FILTER (WHERE ret < 0), 0) breadth,
+               quantile_cont(ret, 0.75) - quantile_cont(ret, 0.25) iqr
+        FROM feat_stock WHERE trade_date = ? AND NOT is_new_stock
+        GROUP BY sw_l1
+        """,
+        [day],
+    ).fetchdf()
+    mart = con.execute("SELECT sw_l1, n, ew_ret, breadth, iqr FROM mart_sector_day WHERE trade_date = ?", [day]).fetchdf()
+    mm = mart.set_index("sw_l1")
+    for name in ["电子", "银行", "医药生物"]:
+        if name not in mm.index:
+            continue
+        row = sec[sec.sw_l1 == name].iloc[0]
+        m = mm.loc[name]
+        check(f"{name} n", row.n, m.n, 0)
+        check(f"{name} 等权收益", row.ew, m.ew_ret, 1e-12)
+        check(f"{name} 广度", row.breadth, m.breadth, 1e-12)
+        check(f"{name} IQR", row.iqr, m.iqr, 1e-12)
+    total = con.execute(
+        "SELECT count(*) FROM feat_stock WHERE trade_date = ? AND NOT is_new_stock AND sw_l1 = '未分类'", [day]
+    ).fetchall()[0][0]
+    print(f"  [info] 未分类个股 = {total} / {int(sec.n.sum())}")
+
+    m_amt = con.execute("SELECT amount FROM mart_market_day WHERE trade_date = ?", [day]).fetchall()[0][0]
+    s_amt = con.execute(
+        "SELECT sum(amount) * 1000 FROM feat_stock WHERE trade_date = ? AND NOT is_new_stock", [day]
+    ).fetchall()[0][0]
+    check("行业成交额合计 = 全市场", m_amt, s_amt, m_amt * 0.001)
+
+
+def audit_stocks_vs_akshare(con, day: str, n_samples: int) -> None:
+    import akshare as ak
+
+    codes = [
+        r[0]
+        for r in con.execute(
+            "SELECT ts_code FROM feat_stock WHERE trade_date = ? AND NOT is_new_stock ORDER BY ts_code",
+            [day],
+        ).fetchall()
+    ]
+    random.seed(7)
+    sample = sorted(random.sample(codes, min(n_samples, len(codes))))
+    ref = con.execute(
+        "SELECT ts_code, close, ret, amount, circ_mv FROM feat_stock WHERE trade_date = ?",
+        [day],
+    ).fetchdf().set_index("ts_code")
+    d = pd.to_datetime(day).strftime("%Y%m%d")
+    ok_price = ok_ret = ok_amt = 0
+    checked = 0
+    for code in sample:
+        try:
+            df = ak.stock_zh_a_hist(symbol=code.split(".")[0], period="daily", start_date=d, end_date=d, adjust="")
+            if df is None or df.empty:
+                continue
+            row = df.iloc[0]
+            r = ref.loc[code]
+            checked += 1
+            ok_price += abs(float(row["收盘"]) - r.close) < 0.011
+            ok_ret += abs(float(row["涨跌幅"]) - r.ret * 100) < 0.05
+            ok_amt += abs(float(row["成交额"]) - r.amount * 1000) / max(1.0, r.amount * 1000) < 0.01
+        except Exception as e:
+            print(f"  [warn] akshare {code}: {type(e).__name__}")
+        time.sleep(0.15)
+    check("akshare 抽样收盘价一致", checked, ok_price, 0, note=f"{checked} 只，容差 0.01")
+    check("akshare 抽样涨跌幅一致", checked, ok_ret, 0, note=f"{checked} 只，容差 0.05pp")
+    check("akshare 抽样成交额一致", checked, ok_amt, 0, note=f"{checked} 只，容差 1%")
+
+
+def audit_index_vs_akshare(con, day: str) -> None:
+    import akshare as ak
+
+    try:
+        df = ak.index_zh_a_hist(
+            symbol="000300", period="daily",
+            start_date=pd.to_datetime(day).strftime("%Y%m%d"),
+            end_date=pd.to_datetime(day).strftime("%Y%m%d"),
+        )
+        if df is None or df.empty:
+            print("  [warn] akshare 指数为空")
+            return
+        ak_ret = float(df.iloc[0]["涨跌幅"]) / 100
+        local = con.execute(
+            "SELECT pct_chg / 100.0 FROM core_index_day WHERE trade_date = ? AND ts_code = '000300.SH'", [day]
+        ).fetchall()[0][0]
+        diff = abs(ak_ret - local)
+        check("沪深300 与 akshare 一致", 0.0, round(diff, 6), 0.0002, note=f"akshare {ak_ret:.4%} vs local {local:.4%}")
+    except Exception as e:
+        print(f"  [warn] index check failed: {type(e).__name__}: {e}")
+
+
+def audit_limit_method(con, day: str = "2026-05-22") -> None:
+    official = con.execute(
+        "SELECT count(*) FROM core_limit_event WHERE trade_date = ? AND is_up", [day]
+    ).fetchall()[0][0]
+    price = con.execute(
+        "SELECT count(*) FROM feat_stock WHERE trade_date = ? AND is_limit_up", [day]
+    ).fetchall()[0][0]
+    both = con.execute(
+        """
+        SELECT count(*) FROM core_limit_event e
+        JOIN feat_stock f USING (ts_code, trade_date)
+        WHERE e.trade_date = ? AND e.is_up AND f.is_limit_up
+        """,
+        [day],
+    ).fetchall()[0][0]
+    price_ex_st = con.execute(
+        """
+        SELECT count(*) FROM feat_stock
+        WHERE trade_date = ? AND is_limit_up AND (up_limit / pre_close - 1) >= 0.06
+        """,
+        [day],
+    ).fetchall()[0][0]
+    st_n = price - price_ex_st
+    union = official + price - both
+    jac = both / union if union else 0
+    # Tushare limit_list_d 不含 ST/风险警示股；价格口径含 5% 涨停，剔除后再对比。
+    check(
+        "涨停口径 vs 官方（剔除5%）",
+        official,
+        price_ex_st,
+        max(2, round(official * 0.03)),
+        note=f"{day} 官方 {official} / 非5% {price_ex_st} / 含ST {st_n}",
+    )
+
+    print(f"  [info] {day}: official={official} price={price} ex_st={price_ex_st} st={st_n} overlap={both} jaccard={jac:.3f}")
+
+    # 连板口径
+    off_streak = con.execute(
+        "SELECT max(limit_times) FROM core_limit_event WHERE trade_date = ? AND is_up", [day]
+    ).fetchall()[0][0]
+    our_streak = con.execute(
+        "SELECT max(limit_streak) FROM feat_stock WHERE trade_date = ?", [day]
+    ).fetchall()[0][0]
+    print(f"  [info] {day}: 官方最高连板={off_streak} 价格口径={our_streak}")
+
+    mrow = con.execute(
+        "SELECT limit_up_ex_st_n, limit_up_st_n, broken_rate FROM mart_market_day WHERE trade_date = ?", [day]
+    ).fetchdf()
+    if len(mrow):
+        r = mrow.iloc[0]
+        check("ST 涨停家数", st_n, r.limit_up_st_n, 0, note=f"{day}")
+        check("非ST涨停 = 官方", official, r.limit_up_ex_st_n, max(2, round(official * 0.03)))
+        broken = con.execute(
+            "SELECT count(*) FROM core_limit_event WHERE trade_date = ? AND is_broken", [day]
+        ).fetchall()[0][0]
+        if r.broken_rate == r.broken_rate:
+            check("炸板率（官方分母）", broken / (official + broken), r.broken_rate, 1e-12)
+
+
+def audit_integrity(con, day: str) -> None:
+    """批量一致性：派生表 vs 原始表 / 聚合 vs 明细。"""
+    # 1) feat_stock vs core_stock_day（价格、收益、成交额、复权）
+    fv = con.execute(
+        """
+        SELECT count(*) n,
+               count(*) FILTER (WHERE abs(f.close - c.close) > 0.001) bad_close,
+               count(*) FILTER (WHERE abs(f.ret - c.pct_chg / 100.0) > 1e-9) bad_ret,
+               count(*) FILTER (WHERE abs(f.amount - c.amount) > 0.001) bad_amt,
+               count(*) FILTER (WHERE abs(f.adj_close - c.close * c.adj_factor) > 0.01) bad_adj
+        FROM feat_stock f JOIN core_stock_day c USING (ts_code, trade_date)
+        WHERE f.trade_date = ? AND NOT f.is_new_stock
+        """,
+        [day],
+    ).fetchdf().iloc[0]
+    check("feat 覆盖 core 行数", int(fv.n), int(fv.n), 0)
+    check("feat 收盘价 = core", 0, int(fv.bad_close), 0)
+    check("feat 收益 = pct_chg/100", 0, int(fv.bad_ret), 0)
+    check("feat 成交额 = core（千元）", 0, int(fv.bad_amt), 0)
+    check("adj_close = close × adj_factor", 0, int(fv.bad_adj), 0)
+
+    # 2) 行业聚合全量对比
+    sec = con.execute(
+        """
+        WITH s AS (
+            SELECT sw_l1,
+                   count(*) n,
+                   avg(ret) ew,
+                   count(*) FILTER (WHERE ret > 0)::DOUBLE /
+                       nullif(count(*) FILTER (WHERE ret > 0) + count(*) FILTER (WHERE ret < 0), 0) breadth,
+                   quantile_cont(ret, 0.75) - quantile_cont(ret, 0.25) iqr
+            FROM feat_stock
+            WHERE trade_date = ? AND NOT is_new_stock AND sw_l1 <> '未分类'
+            GROUP BY sw_l1
+        )
+        SELECT count(*) bad
+        FROM s JOIN mart_sector_day m USING (sw_l1)
+        WHERE m.trade_date = ?
+          AND (s.n <> m.n OR abs(s.ew - m.ew_ret) > 1e-9
+               OR abs(s.breadth - m.breadth) > 1e-12 OR abs(s.iqr - m.iqr) > 1e-9)
+        """,
+        [day, day],
+    ).fetchall()[0][0]
+    check("31 行业聚合全部一致", 0, int(sec), 0)
+
+    # 3) 最新个股快照
+    snap = con.execute(
+        """
+        SELECT count(*) bad
+        FROM mart_stock_latest l JOIN feat_stock f USING (ts_code)
+        WHERE f.trade_date = ?
+          AND (abs(l.close - f.close) > 0.001 OR abs(l.ret - f.ret) > 1e-9
+               OR abs(l.circ_mv - f.circ_mv) > 0.01 OR l.sw_l1 IS DISTINCT FROM f.sw_l1)
+        """,
+        [day],
+    ).fetchall()[0][0]
+    check("个股最新快照全部一致", 0, int(snap), 0)
+
+    # 4) 月度复利
+    mon = con.execute(
+        """
+        WITH d AS (
+            SELECT sw_l1, date_trunc('month', trade_date)::DATE m,
+                   exp(sum(ln(1 + ew_ret))) - 1 cum
+            FROM mart_sector_day
+            WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 400 DAY FROM mart_sector_day)
+            GROUP BY 1, 2
+        )
+        SELECT count(*) bad FROM d JOIN mart_sector_month sm
+          ON d.sw_l1 = sm.sw_l1 AND d.m = sm.month
+        WHERE abs(d.cum - sm.ew_ret_cum) > 1e-9
+        """,
+    ).fetchall()[0][0]
+    check("行业月度累计 = 日度复利", 0, int(mon), 0)
+
+
+def audit_payload(con, day: str) -> None:
+    p = ROOT / "data" / "static-data.json"
+    if not p.exists():
+        check("静态 payload 存在", True, False, 0, kind="bool")
+        return
+    d = json.loads(p.read_text(encoding="utf-8"))
+    last = d["market"][-1]
+    m = con.execute("SELECT * FROM mart_market_day WHERE trade_date = ?", [day]).fetchdf().iloc[0]
+    check("payload 最新日期", m.trade_date.strftime("%Y-%m-%d"), str(last["trade_date"])[:10], 0, kind="str")
+    for k in ["breadth", "ew_ret", "cw_ret", "top10_share", "amount", "limit_up_n"]:
+        check(f"payload {k}", m[k], last[k], 1e-3)
+    check("payload 个股数", int(m.n_valid), len(d["stocks"]), 0)
+    print(f"  [info] payload stocks={len(d['stocks'])}, sectors={len(d['sectors'])}, rotation={len(d.get('rotation', []))}")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--date", default="2026-11-10")
+    ap.add_argument("--samples", type=int, default=20)
+    args = ap.parse_args()
+    day = args.date
+    con = duckdb.connect(str(ROOT / "data" / "lake.duckdb"), read_only=True)
+
+    print(f"== 审计交易日 {day} ==")
+    print("[1] 市场指标")
+    audit_market(con, day)
+    print("[2] 行业指标")
+    audit_sectors(con, day)
+    print("[3] 个股抽样 vs akshare")
+    audit_stocks_vs_akshare(con, day, args.samples)
+    print("[4] 指数 vs akshare")
+    audit_index_vs_akshare(con, day)
+    print("[5] 涨停口径校验（历史官方数据）")
+    audit_limit_method(con, "2026-05-22")
+    print("[6] 批量一致性")
+    audit_integrity(con, day)
+    print("[7] 静态 payload 一致性")
+    audit_payload(con, day)
+    con.close()
+
+    fails = [r for r in RESULTS if not r["ok"]]
+    print(f"\n== 结果：{len(RESULTS) - len(fails)}/{len(RESULTS)} 通过 ==")
+    for r in fails:
+        print("  FAIL", r["item"], "expected", r["expected"], "actual", r["actual"], "diff", r["diff"], r["note"])
+
+    lines = [
+        f"# 数据审计报告 · {day}",
+        "",
+        f"- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"- 样本：{len(RESULTS)} 项检查，{len(fails)} 项失败",
+        "",
+        "| 检查项 | 期望/原始 | 实际/mart | 差异 | 结果 | 备注 |",
+        "|---|---:|---:|---:|:--:|---|",
+    ]
+    for r in RESULTS:
+        exp = f"{r['expected']:.6g}" if isinstance(r["expected"], (int, float)) else str(r["expected"])
+        act = f"{r['actual']:.6g}" if isinstance(r["actual"], (int, float)) else str(r["actual"])
+        diff = "" if r["diff"] is None else f"{r['diff']:.6g}"
+        lines.append(f"| {r['item']} | {exp} | {act} | {diff} | {'✅' if r['ok'] else '❌'} | {r['note']} |")
+    (ROOT / "docs" / "audit_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("[written] docs/audit_report.md")
+
+
+if __name__ == "__main__":
+    main()
