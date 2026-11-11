@@ -1,50 +1,81 @@
-import type { EChartsOption } from "echarts";
+﻿import type { EChartsOption } from "echarts";
 import type { RotationDay, SectorRank } from "./api";
-import { axisStyle, baseChart, type Palette, SW_COLORS } from "./theme";
+import { axisStyle, baseChart, type Palette, seriesColors } from "./theme";
 import { shortDate } from "./format";
 
-/** 行业排名迁移（bump chart）：排名按 20 日累计收益。 */
-export function rotationBump(p: Palette, ranks: SectorRank[], lang: string, topN = 8): EChartsOption {
-  const dates = [...new Set(ranks.map((r) => r.trade_date))].sort();
+const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
+
+/** 行业排名迁移（bump chart）：20 日收益排名，按周采样。 */
+export function rotationBump(
+  p: Palette,
+  ranks: SectorRank[],
+  lang: string,
+  selected?: string | null,
+  topN = 6,
+): EChartsOption {
+  const datesAll = [...new Set(ranks.map((r) => r.trade_date))].sort();
+  const recent = datesAll.slice(-130);
+  const dates = recent.filter((_, i) => i % 5 === 0 || i === recent.length - 1);
   const bySector = new Map<string, Map<string, number>>();
   ranks.forEach((r) => {
     if (!bySector.has(r.sw_l1)) bySector.set(r.sw_l1, new Map());
     bySector.get(r.sw_l1)!.set(r.trade_date, r.rank20);
   });
-  // 以最近 60 日均排名挑选最稳定的 topN
-  const recent = dates.slice(-60);
-  const score = [...bySector.entries()].map(([name, m]) => {
-    const vals = recent.map((d) => m.get(d)).filter((v): v is number => v != null);
-    return { name, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 99 };
+  const stats = [...bySector.entries()].map(([name, m]) => {
+    const vals = dates.map((d) => m.get(d)).filter((v): v is number => v != null);
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 99;
+    const range = vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
+    return { name, avg, range };
   });
-  const picked = score.sort((a, b) => a.avg - b.avg).slice(0, topN).map((s) => s.name);
+  const stable = [...stats].sort((a, b) => a.avg - b.avg).slice(0, 3).map((s) => s.name);
+  const movers = [...stats].sort((a, b) => b.range - a.range).slice(0, 2).map((s) => s.name);
+  const picked = [...new Set([...stable, ...movers])].slice(0, topN);
+  if (selected && !picked.includes(selected)) picked[picked.length - 1] = selected;
 
   return {
     ...baseChart(p),
-    grid: { left: 8, right: 64, top: 16, bottom: 24, containLabel: true },
+    grid: { left: 8, right: 58, top: 14, bottom: 52, containLabel: true },
+    legend: {
+      show: true,
+      bottom: 0,
+      left: 8,
+      right: 8,
+      icon: "circle",
+      itemWidth: 6,
+      itemHeight: 6,
+      itemGap: 10,
+      textStyle: { color: p.muted, fontSize: 11 },
+      data: picked,
+    },
     tooltip: {
       ...baseChart(p).tooltip,
       trigger: "axis",
       formatter: (params: unknown) => {
-        const arr = params as { seriesName: string; value: [string, number] }[];
-        const rows = arr
-          .filter((a) => a.value?.[1] != null)
-          .sort((a, b) => a.value[1] - b.value[1])
-          .slice(0, 8)
+        const arr = params as { dataIndex: number; seriesName: string; value: number | null }[];
+        const date = dates[arr[0]?.dataIndex ?? 0] ?? "";
+        const rows = [...arr]
+          .filter((a) => a.value != null)
+          .sort((a, b) => Number(a.value) - Number(b.value))
           .map(
             (a) =>
-              `<div style="display:flex;justify-content:space-between;gap:14px"><span>${a.seriesName}</span><b>#${a.value[1]}</b></div>`,
+              `<div style="display:flex;justify-content:space-between;gap:14px"><span>${a.seriesName}</span><b>#${a.value}</b></div>`,
           )
           .join("");
-        return `<div style="font-family:monospace;font-size:11px;color:${p.muted};margin-bottom:4px">${arr[0]?.value?.[0] ?? ""}</div>${rows}`;
+        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:4px">${shortDate(date)}</div>${rows}`;
       },
     },
     xAxis: {
       type: "category",
       data: dates.map(shortDate),
+      boundaryGap: false,
       ...axisStyle(p),
       splitLine: { show: false },
-      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9, interval: Math.max(0, Math.floor(dates.length / 6)) },
+      axisLabel: {
+        ...axisStyle(p).axisLabel,
+        fontSize: 11,
+        hideOverlap: true,
+        interval: Math.max(1, Math.floor(dates.length / 5)),
+      },
     },
     yAxis: {
       type: "value",
@@ -53,161 +84,232 @@ export function rotationBump(p: Palette, ranks: SectorRank[], lang: string, topN
       max: bySector.size,
       interval: 5,
       ...axisStyle(p),
-      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9, formatter: "#{value}" },
+      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 11, formatter: "#{value}" },
       splitLine: { lineStyle: { color: p.grid, type: "dashed" } },
     },
-    series: picked.map((name, i) => ({
-      name,
-      type: "line",
-      data: dates.map((d) => [shortDate(d), bySector.get(name)?.get(d) ?? null]),
-      showSymbol: false,
-      smooth: 0.15,
-      connectNulls: true,
-      lineStyle: { width: 1.5, color: SW_COLORS[i % SW_COLORS.length], opacity: 0.85 },
-      endLabel: {
-        show: true,
-        formatter: name,
-        color: SW_COLORS[i % SW_COLORS.length],
-        fontSize: 9,
-        distance: 6,
-      },
-      emphasis: { focus: "series" },
-    })),
+    series: picked.map((name, i) => {
+      const isSel = name === selected;
+      const color = isSel ? p.copper : seriesColors(p)[i % seriesColors(p).length];
+      return {
+        name,
+        type: "line" as const,
+        data: dates.map((d) => bySector.get(name)?.get(d) ?? null),
+        showSymbol: true,
+        symbol: "circle",
+        symbolSize: isSel ? 4.5 : 3,
+        smooth: 0.12,
+        connectNulls: true,
+        lineStyle: { width: isSel ? 2.6 : 1.7, color, opacity: isSel ? 1 : 0.82 },
+        itemStyle: { color },
+        endLabel: {
+          show: isSel,
+          formatter: name,
+          color,
+          fontSize: 11,
+          fontWeight: 600,
+          distance: 6,
+        },
+        emphasis: {
+          focus: "series",
+          lineStyle: { width: 3 },
+          itemStyle: { borderColor: p.text, borderWidth: 1 },
+          label: { show: true },
+        },
+        blur: {
+          lineStyle: { opacity: 0.06 },
+          itemStyle: { opacity: 0.06 },
+          label: { show: false },
+        },
+        label: {
+          show: false,
+          position: "top",
+          distance: 3,
+          color,
+          fontSize: 9.5,
+          formatter: (q: any) => {
+            const i = Number(q.dataIndex);
+            return i % 4 === 0 || i === dates.length - 1 ? `#${q.value}` : "";
+          },
+        },
+        z: isSel ? 5 : 2,
+      };
+    }),
   };
 }
 
-/** 轮动强度：行业排名日变化的均值。 */
-export function rotationIntensity(p: Palette, rows: RotationDay[], lang: string): EChartsOption {
-  const avg = rows.reduce((a, r) => a + r.rotation_intensity, 0) / Math.max(1, rows.length);
+/** 轮动强度：月度平均排名变化，柱状呈现。 */
+export function rotationPulse(p: Palette, rows: RotationDay[], lang: string): EChartsOption {
+  const groups = new Map<string, { sum: number; n: number }>();
+  rows.forEach((r) => {
+    const m = r.trade_date.slice(0, 7);
+    const g = groups.get(m) || { sum: 0, n: 0 };
+    g.sum += r.rotation_intensity;
+    g.n += 1;
+    groups.set(m, g);
+  });
+  const all = [...groups.entries()].map(([month, g]) => ({ month, value: g.sum / Math.max(1, g.n), n: g.n })).sort((a, b) => a.month.localeCompare(b.month));
+  const data = all.slice(-12);
+  const avg = data.reduce((a, x) => a + x.value, 0) / Math.max(1, data.length);
+  const max = Math.max(...data.map((x) => x.value), avg, 1);
+
   return {
     ...baseChart(p),
-    grid: { left: 8, right: 10, top: 16, bottom: 22, containLabel: true },
+    grid: { left: 8, right: 12, top: 18, bottom: 24, containLabel: true },
     tooltip: {
       ...baseChart(p).tooltip,
       trigger: "axis",
       formatter: (params: unknown) => {
         const arr = params as { dataIndex: number }[];
-        const r = rows[arr[0].dataIndex];
-        return `<div style="font-family:monospace;font-size:11px;color:${p.muted}">${r.trade_date}</div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>${lang === "en" ? "Rotation" : "轮动强度"}</span><b>${r.rotation_intensity.toFixed(2)}</b></div>`;
+        const x = data[arr[0]?.dataIndex ?? 0];
+        if (!x) return "";
+        return `<div style="font-family:monospace;font-size:12px;color:${p.muted}">${x.month}</div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "月均轮动", "Monthly avg")}</span><b>${x.value.toFixed(2)}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "交易日", "Sessions")}</span><b>${x.n}</b></div>`;
       },
     },
     xAxis: {
       type: "category",
-      data: rows.map((r) => shortDate(r.trade_date)),
+      data: data.map((x) => x.month.slice(2)),
       ...axisStyle(p),
       splitLine: { show: false },
-      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9, interval: Math.max(0, Math.floor(rows.length / 5)) },
+      axisLabel: {
+        ...axisStyle(p).axisLabel,
+        fontSize: 11,
+        hideOverlap: true,
+        interval: (i: number) => i % 4 === 0 || i === data.length - 1,
+      },
     },
     yAxis: {
       type: "value",
+      min: 0,
+      max: +max.toFixed(1),
       ...axisStyle(p),
-      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9 },
+      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 11 },
       splitNumber: 3,
     },
     series: [
       {
-        type: "line",
-        data: rows.map((r) => +r.rotation_intensity.toFixed(2)),
-        showSymbol: false,
-        smooth: 0.25,
-        lineStyle: { color: p.accent, width: 1.4 },
-        areaStyle: {
-          color: {
-            type: "linear",
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: "rgba(91,140,255,.20)" },
-              { offset: 1, color: "rgba(91,140,255,0)" },
-            ],
+        type: "bar",
+        data: data.map((x, i) => ({
+          value: +x.value.toFixed(2),
+          itemStyle: {
+            color: i === data.length - 1 ? p.copper : p.accent,
+            opacity: i === data.length - 1 ? 0.95 : 0.32,
+            borderRadius: [2, 2, 0, 0],
           },
+        })),
+        barWidth: "52%",
+        label: {
+          show: false,
+          position: "top",
+          formatter: (q: any) => Number(q.value).toFixed(2),
+          color: p.text2,
+          fontSize: 11,
+        },
+        emphasis: {
+          itemStyle: { opacity: 1, borderColor: p.text, borderWidth: 1 },
+          label: { show: true },
         },
         markLine: {
           silent: true,
           symbol: "none",
           data: [{ yAxis: +avg.toFixed(2) }],
-          lineStyle: { color: p.warn, type: "dashed", width: 1 },
-          label: { formatter: `${lang === "en" ? "avg" : "均值"} ${avg.toFixed(2)}`, color: p.muted, fontSize: 9 },
+          lineStyle: { color: p.axis, type: "dashed", width: 1 },
+          label: { show: false },
         },
       },
     ],
   };
 }
 
-/** 排名迁移矩阵：行=行业，列=周，颜色=20 日收益排名（越红越强）。 */
-export function sectorRankHeatmap(p: Palette, ranks: SectorRank[], lang: string, weeks = 26): EChartsOption {
-  const dates = [...new Set(ranks.map((r) => r.trade_date))].sort();
-  const sampledAll = dates.filter((_, i) => i % 5 === 0 || i === dates.length - 1);
-  const sampled = sampledAll.slice(-weeks);
-  const bySector = new Map<string, Map<string, number>>();
-  ranks.forEach((r) => {
-    if (!bySector.has(r.sw_l1)) bySector.set(r.sw_l1, new Map());
-    bySector.get(r.sw_l1)!.set(r.trade_date, r.rank20);
-  });
-  const score = [...bySector.entries()].map(([name, m]) => {
-    const vals = sampled.map((d) => m.get(d)).filter((v): v is number => v != null);
-    return { name, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 99 };
-  });
-  const sectors = score.sort((a, b) => a.avg - b.avg).map((s) => s.name);
-  const idxS = new Map(sectors.map((s, i) => [s, i]));
-  const data: [number, number, number][] = [];
-  sampled.forEach((d, w) => {
-    sectors.forEach((s) => {
-      const v = bySector.get(s)?.get(d);
-      if (v != null) data.push([w, idxS.get(s)!, v]);
+/** 行业月度累计收益曲线：一组行业，一条线一个行业。 */
+export function monthlyPathChart(
+  p: Palette,
+  months: string[],
+  series: { name: string; values: (number | null)[] }[],
+  lang: string,
+): EChartsOption {
+  const colors = seriesColors(p);
+  const paths = series.map((s) => {
+    let v = 1;
+    return s.values.map((r) => {
+      if (r != null) v *= 1 + r;
+      return +((v - 1) * 100).toFixed(2);
     });
   });
-  const n = sectors.length;
-
   return {
     ...baseChart(p),
-    grid: { left: 8, right: 14, top: 8, bottom: 42, containLabel: true },
+    grid: { left: 8, right: 12, top: 44, bottom: 34, containLabel: true },
+    legend: {
+      top: 0,
+      left: 0,
+      type: "scroll",
+      icon: "roundRect",
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 10,
+      textStyle: { color: p.muted, fontSize: 10.5 },
+      pageIconColor: p.accent,
+      pageIconInactiveColor: p.faint,
+      pageTextStyle: { color: p.faint, fontSize: 10 },
+      data: series.map((s) => s.name),
+    },
     tooltip: {
       ...baseChart(p).tooltip,
+      trigger: "axis",
       formatter: (params: unknown) => {
-        const q = params as { data: [number, number, number] };
-        const [w, si, v] = q.data;
-        return `<div style="font-family:monospace;font-size:11px;color:${p.muted}">${sampled[w]}</div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>${sectors[si]}</span><b>#${v}</b></div>`;
+        const arr = params as { dataIndex: number; seriesName: string; value: number; color: string }[];
+        const i = arr?.[0]?.dataIndex ?? 0;
+        return `<div style="min-width:150px"><div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${months[i]}</div>${arr
+          .map(
+            (x) =>
+              `<div style="display:flex;justify-content:space-between;gap:16px"><span><i style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${x.color};margin-right:5px"></i>${x.seriesName}</span><b>${Number(x.value).toFixed(2)}%</b></div>`,
+          )
+          .join("")}</div>`;
       },
     },
     xAxis: {
       type: "category",
-      data: sampled.map(shortDate),
+      data: months.map((m) => m.slice(2, 7)),
       ...axisStyle(p),
+      name: L(lang, "月份", "Month"),
+      nameLocation: "middle",
+      nameGap: 24,
+      nameTextStyle: { color: p.muted, fontSize: 10.5 },
       splitLine: { show: false },
-      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9, interval: Math.max(0, Math.floor(sampled.length / 6)) },
+      axisLabel: { ...axisStyle(p).axisLabel, interval: Math.max(0, Math.floor(months.length / 6)), fontSize: 11 },
     },
     yAxis: {
-      type: "category",
-      data: sectors,
+      type: "value",
+      scale: true,
       ...axisStyle(p),
-      splitLine: { show: false },
-      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9 },
+      name: L(lang, "累计收益", "Cumulative"),
+      nameLocation: "end",
+      nameGap: 8,
+      nameTextStyle: { color: p.muted, fontSize: 10.5 },
+      axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11 },
+      splitNumber: 3,
     },
-    visualMap: {
-      min: 1,
-      max: n,
-      right: 0,
-      bottom: 0,
-      itemWidth: 8,
-      itemHeight: 56,
-      text: [lang === "en" ? "#1" : "强", lang === "en" ? `#${n}` : "弱"],
-      textStyle: { color: p.muted, fontSize: 9 },
-      inRange: { color: ["#f0555a", "#2a2f38", "#23b57d"] },
-      formatter: (v: number) => `#${Math.round(v)}`,
-    },
-    series: [
-      {
-        type: "heatmap",
-        data,
-        itemStyle: { borderColor: p.panel, borderWidth: 1, borderRadius: 2 },
-        emphasis: { itemStyle: { borderColor: p.text, borderWidth: 1 } },
-        progressive: 2000,
-      },
-    ],
+    series: series.map((s, i) => ({
+      name: s.name,
+      type: "line",
+      data: paths[i],
+      showSymbol: false,
+      smooth: 0.2,
+      lineStyle: { width: 1.9, color: colors[i % colors.length] },
+      itemStyle: { color: colors[i % colors.length] },
+      emphasis: { focus: "series" },
+      blur: { lineStyle: { opacity: 0.12 }, itemStyle: { opacity: 0.12 } },
+      markLine:
+        i === 0
+          ? {
+              silent: true,
+              symbol: "none",
+              data: [{ yAxis: 0 }],
+              lineStyle: { color: p.axis, width: 1, type: "dashed" },
+              label: { show: false },
+            }
+          : undefined,
+    })),
   };
 }

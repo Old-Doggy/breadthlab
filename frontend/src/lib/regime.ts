@@ -26,7 +26,7 @@ export const regimeLabel = (key: RegimeKey, lang: string): string => {
 /** 为 hero 区生成一句人话结论。 */
 export function verdict(m: MarketDay, lang: string): string {
   const b = Math.round(m.breadth * 100);
-  const idx = (m.hs300_ret * 100).toFixed(2);
+  const idx = ((m.hs300_ret ?? 0) * 100).toFixed(2);
   const top = Math.round((m.top10_share || 0) * 100);
   if (lang === "en") {
     if (m.ew_ret > 0 && m.breadth < 0.45)
@@ -52,3 +52,24 @@ export const quadrants = [
   { key: "mixed", zh: "结构分化", en: "Divergent", color: "rgba(125,135,152,.04)" },
   { key: "broad_down", zh: "普跌", en: "Broad selloff", color: "rgba(240,85,90,.05)" },
 ];
+
+/** 页面级结论句：短、无句号、用于衬线大标题。 */
+export function headline(m: Pick<MarketDay, "ew_ret" | "breadth" | "hs300_ret">, lang = "zh"): string {
+  const b = Math.round(m.breadth * 100);
+  const idx = (m.hs300_ret ?? 0) * 100;
+  const quiet = Math.abs(idx) < 0.25;
+  if (lang === "en") {
+    if (m.ew_ret > 0 && quiet) return `The index barely moved — ${b}% of stocks rose`;
+    if (m.ew_ret > 0 && m.breadth >= 0.6) return `${b}% of stocks are rising`;
+    if (m.ew_ret > 0 && m.breadth < 0.45) return `The index is up, but only ${b}% of stocks joined`;
+    if (m.ew_ret < 0 && m.breadth >= 0.6) return `The index is down, most stocks are up`;
+    if (m.ew_ret < 0 && m.breadth < 0.45) return `Broad selloff — only ${b}% advanced`;
+    return `Split tape — ${b}% of stocks are up`;
+  }
+  if (m.ew_ret > 0 && quiet) return `指数几乎没动，${b}% 的股票在涨`;
+  if (m.ew_ret > 0 && m.breadth >= 0.6) return `普涨：${b}% 的股票在涨`;
+  if (m.ew_ret > 0 && m.breadth < 0.45) return `指数在涨，但只有 ${b}% 的股票跟上了`;
+  if (m.ew_ret < 0 && m.breadth >= 0.6) return `指数在跌，多数股票却在涨`;
+  if (m.ew_ret < 0 && m.breadth < 0.45) return `普跌：仅 ${b}% 的股票上涨`;
+  return `结构分化：${b}% 的股票在涨`;
+}

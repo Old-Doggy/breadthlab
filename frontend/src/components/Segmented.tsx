@@ -25,7 +25,7 @@ export function Segmented<T extends string>({
             key={o.value}
             onClick={() => onChange(o.value)}
             className={[
-              "rounded-[6px] px-2.5 py-[4px] text-[11px] font-medium transition-colors duration-150",
+              "rounded-[6px] px-3 py-[6px] text-[12px] font-medium transition-colors duration-150",
               active
                 ? "bg-[var(--panel-3)] text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,.06)]"
                 : "text-[var(--muted)] hover:text-[var(--text-2)]",

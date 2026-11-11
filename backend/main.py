@@ -9,12 +9,13 @@ import json
 import math
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 import duckdb
-from flask import Flask, abort, jsonify, request, send_from_directory
+from flask import Flask, abort, g, jsonify, request, send_from_directory
+from flask.json.provider import DefaultJSONProvider
 
 ROOT = Path(__file__).resolve().parents[1]
 LAKE = ROOT / "data" / "lake.duckdb"
@@ -22,22 +23,41 @@ META = ROOT / "data" / "meta"
 DB = ROOT / "data" / "app.sqlite"
 DIST = ROOT / "frontend" / "dist"
 
+
+class ISOJSONProvider(DefaultJSONProvider):
+    """DuckDB DATE/DATETIME 默认会被 Flask 序列化成 RFC 822，前端和图表要 ISO。"""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        return super().default(obj)
+
+
 app = Flask(__name__, static_folder=None)
+app.json = ISOJSONProvider(app)
 app.json.ensure_ascii = False
 app.json.sort_keys = False
 
 _lock = threading.Lock()
-_con: duckdb.DuckDBPyConnection | None = None
 
 
 def con() -> duckdb.DuckDBPyConnection:
-    global _con
-    if _con is None:
+    """每请求一个只读连接，请求结束即释放，避免长期占锁让更新任务打不开库。"""
+    c = getattr(g, "_con", None)
+    if c is None:
         if not LAKE.exists():
             abort(503, "lake.duckdb 尚未构建")
-        _con = duckdb.connect(str(LAKE), read_only=True)
-        _con.execute("SET threads=4")
-    return _con
+        c = duckdb.connect(str(LAKE), read_only=True)
+        c.execute("SET threads=4")
+        g._con = c
+    return c
+
+
+@app.teardown_appcontext
+def _release_con(exc: BaseException | None) -> None:
+    c = g.pop("_con", None)
+    if c is not None:
+        c.close()
 
 
 def _clean(v: Any) -> Any:

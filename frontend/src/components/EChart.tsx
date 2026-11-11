@@ -28,32 +28,41 @@ const EChart = forwardRef<EChartHandle, Props>(function EChart(
       devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
     });
     instRef.current = inst;
-    const ro = new ResizeObserver(() => inst.resize({ animation: { duration: 180 } }));
+    const ro = new ResizeObserver(() => {
+      if (!inst.isDisposed()) inst.resize({ animation: { duration: 180 } });
+    });
     ro.observe(hostRef.current);
     return () => {
       ro.disconnect();
-      inst.dispose();
-      instRef.current = null;
+      if (!inst.isDisposed()) inst.dispose();
+      if (instRef.current === inst) instRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    instRef.current?.setOption(option, { notMerge: true, lazyUpdate: true });
+    const inst = instRef.current;
+    if (!inst || inst.isDisposed()) return;
+    inst.setOption(option, { notMerge: true, lazyUpdate: true });
   }, [option]);
 
   useEffect(() => {
     const inst = instRef.current;
-    if (!inst || !onEvents) return;
+    if (!inst || inst.isDisposed() || !onEvents) return;
     const entries = Object.entries(onEvents);
     entries.forEach(([name, handler]) => inst.on(name, handler));
-    return () => entries.forEach(([name, handler]) => inst.off(name, handler));
+    return () => {
+      if (!inst.isDisposed()) entries.forEach(([name, handler]) => inst.off(name, handler));
+    };
   }, [onEvents]);
 
   useImperativeHandle(
     ref,
     () => ({
-      getDataURL: (backgroundColor = "transparent") =>
-        instRef.current?.getDataURL({ type: "png", pixelRatio: 2, backgroundColor }) ?? null,
+      getDataURL: (backgroundColor = "transparent") => {
+        const inst = instRef.current;
+        if (!inst || inst.isDisposed()) return null;
+        return inst.getDataURL({ type: "png", pixelRatio: 2, backgroundColor });
+      },
     }),
     [],
   );

@@ -7,7 +7,7 @@ import { regimeOf, regimeLabel } from "./regime";
 const axisDate = (rows: MarketDay[]) => rows.map((r) => shortDate(r.trade_date));
 const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
 
-/** 参与广度：近 N 日 breadth 面积 + 背离点。 */
+/** 参与广度：近 N 日 breadth 面积 + 背离点 */
 export function breadthArea(p: Palette, rows: MarketDay[]): EChartsOption {
   const x = axisDate(rows);
   const y = rows.map((r) => +(r.breadth * 100).toFixed(1));
@@ -23,14 +23,14 @@ export function breadthArea(p: Palette, rows: MarketDay[]): EChartsOption {
       boundaryGap: false,
       ...axisStyle(p),
       splitLine: { show: false },
-      axisLabel: { ...axisStyle(p).axisLabel, interval: Math.max(0, Math.floor(x.length / 5)), fontSize: 10 },
+      axisLabel: { ...axisStyle(p).axisLabel, interval: Math.max(0, Math.floor(x.length / 5)), fontSize: 11 },
     },
     yAxis: {
       type: "value",
       min: 0,
       max: 100,
       ...axisStyle(p),
-      axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 10 },
+      axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11 },
       splitLine: { show: false },
     },
     series: [
@@ -48,8 +48,8 @@ export function breadthArea(p: Palette, rows: MarketDay[]): EChartsOption {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: "rgba(91,140,255,.28)" },
-              { offset: 1, color: "rgba(91,140,255,0)" },
+              { offset: 0, color: "rgba(217,164,65,.3)" },
+              { offset: 1, color: "rgba(217,164,65,0)" },
             ],
           },
         },
@@ -72,7 +72,7 @@ export function breadthArea(p: Palette, rows: MarketDay[]): EChartsOption {
   };
 }
 
-/** 主图：上收益、下广度。 */
+/** 主图：上收益、下广度 */
 export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): EChartsOption {
   const x = axisDate(rows);
   const ew = rows.map((r) => +(r.ew_ret * 100).toFixed(2));
@@ -97,7 +97,7 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         if (!r) return "";
         const t = (k: string) => k;
         return `<div style="min-width:188px">
-          <div style="font-family:'JetBrains Mono Variable',monospace;font-size:11px;color:${p.muted};margin-bottom:6px">${r.trade_date} · ${t(regimeLabel(regimeOf(r), lang))}</div>
+          <div style="font-family:'JetBrains Mono Variable',monospace;font-size:12px;color:${p.muted};margin-bottom:6px">${r.trade_date} · ${t(regimeLabel(regimeOf(r), lang))}</div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "等权收益", "Equal-weight")}</span><b style="color:${r.ew_ret >= 0 ? p.up : p.down}">${(r.ew_ret * 100).toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "沪深300", "CSI 300")}</span><b>${r.hs300_ret === null ? "—" : (r.hs300_ret * 100).toFixed(2) + "%"}</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${br[i]}%</b></div>
@@ -123,8 +123,9 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         splitLine: { show: false },
         axisLabel: {
           ...axisStyle(p).axisLabel,
-          fontSize: 10,
+          fontSize: 11,
           interval: Math.max(0, Math.floor(x.length / 8)),
+          hideOverlap: true,
         },
       },
     ],
@@ -133,7 +134,7 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         type: "value",
         gridIndex: 0,
         ...axisStyle(p),
-        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 10 },
+        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11 },
         splitNumber: 3,
       },
       {
@@ -142,7 +143,7 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         min: 0,
         max: 100,
         ...axisStyle(p),
-        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 10 },
+        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11 },
         splitNumber: 2,
       },
     ],
@@ -155,13 +156,13 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         data: ew,
         barWidth: "62%",
         itemStyle: {
-          color: (params: { value: number }) => (params.value >= 0 ? p.up : p.down),
-          borderRadius: (params: { value: number }) => (params.value >= 0 ? [2, 2, 0, 0] : [0, 0, 2, 2]),
+          color: (params: any) => (Number(params.value) >= 0 ? p.up : p.down),
+          borderRadius: 2,
           opacity: 0.85,
         },
       },
       {
-        name: L(lang, "市值加权", "Cap-weighted"),
+        name: L(lang, "流通市值加权", "Float-cap weighted"),
         type: "line",
         xAxisIndex: 0,
         yAxisIndex: 0,
@@ -197,8 +198,8 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: "rgba(91,140,255,.22)" },
-              { offset: 1, color: "rgba(91,140,255,0)" },
+              { offset: 0, color: "rgba(217,164,65,.24)" },
+              { offset: 1, color: "rgba(217,164,65,0)" },
             ],
           },
         },
@@ -214,28 +215,38 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
   };
 }
 
-/** 行业气泡：收益 × 广度 × 成交额 × 内部分化。 */
-export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string): EChartsOption {
+/** 行业气泡：收益 × 广度 × 成交额 × 内部分化 */
+export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string, selected?: string | null): EChartsOption {
   const maxAmt = Math.max(...sectors.map((s) => s.amount || 0), 1);
-  const maxAbs = Math.max(...sectors.map((s) => Math.abs(s.ew_ret)), 0.005);
   const sorted = [...sectors].sort((a, b) => b.ew_ret - a.ew_ret);
   const labelSet = new Set([
-    sorted[0].sw_l1,
-    [...sectors].sort((a, b) => a.breadth - b.breadth)[0].sw_l1,
-  ]);
+    sorted[0]?.sw_l1,
+    sorted[1]?.sw_l1,
+    sorted[2]?.sw_l1,
+    sorted[sorted.length - 1]?.sw_l1,
+    sorted[sorted.length - 2]?.sw_l1,
+    selected,
+  ].filter(Boolean) as string[]);
 
-  const mix = (a: number[], b: number[], t: number) =>
-    `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(",")})`;
-  const colorOf = (r: number) => {
-    const t = Math.min(1, Math.abs(r) / maxAbs);
-    return r >= 0 ? mix([96, 42, 48], [240, 85, 90], 0.35 + t * 0.65) : mix([26, 66, 54], [35, 181, 125], 0.35 + t * 0.65);
+  const quadColor = (s: SectorDay) => {
+    if (s.ew_ret > 0 && s.breadth >= 0.6) return p.up;
+    if (s.ew_ret > 0 && s.breadth < 0.45) return p.copper;
+    if (s.ew_ret < 0 && s.breadth < 0.45) return p.down;
+    return p.muted;
   };
 
-  const pts = sectors.map((s) => ({
-    name: s.sw_l1,
-    value: [+(s.ew_ret * 100).toFixed(2), +(s.breadth * 100).toFixed(1), s.amount || 0, s.n, +(s.iqr * 100).toFixed(2)],
-    itemStyle: { color: colorOf(s.ew_ret) },
-  }));
+  const pts = sectors.map((s) => {
+    const isSel = selected === s.sw_l1;
+    return {
+      name: s.sw_l1,
+      value: [+(s.ew_ret * 100).toFixed(2), +(s.breadth * 100).toFixed(1), s.amount || 0, s.n, +(s.iqr * 100).toFixed(2)],
+      itemStyle: {
+        color: quadColor(s),
+        borderColor: isSel ? p.text : "transparent",
+        borderWidth: isSel ? 2 : 0,
+      },
+    };
+  });
   const xs = pts.map((p2) => p2.value[0]);
   const xmin = Math.min(...xs, -1);
   const xmax = Math.max(...xs, 1);
@@ -243,14 +254,20 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string): EC
   const x0 = +(xmin - pad).toFixed(1);
   const x1 = +(xmax + pad).toFixed(1);
 
-  const quad = (xa: number, xb: number, ya: number, yb: number) => [
-    { xAxis: xa, yAxis: ya, itemStyle: { color: "transparent" }, label: { show: false } },
-    { xAxis: xb, yAxis: yb },
+  const quad = (xa: number, xb: number, ya: number, yb: number, color: string) => [
+    { xAxis: xa, yAxis: ya, itemStyle: { color }, label: { show: false } },
+    { xAxis: xb, yAxis: yb, itemStyle: { color } },
   ];
 
   return {
     ...baseChart(p),
     grid: { left: 8, right: 18, top: 20, bottom: 24, containLabel: true },
+    graphic: [
+      { type: "text", left: "7%", top: 26, style: { text: L(lang, "集中上涨", "Narrow rally"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
+      { type: "text", right: "4%", top: 26, style: { text: L(lang, "普涨", "Broad rally"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
+      { type: "text", left: "7%", bottom: 44, style: { text: L(lang, "普跌", "Broad selloff"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
+      { type: "text", right: "4%", bottom: 44, style: { text: L(lang, "结构分化", "Divergent"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
+    ],
     tooltip: {
       ...baseChart(p).tooltip,
       formatter: (params: unknown) => {
@@ -284,16 +301,17 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string): EC
       {
         type: "scatter",
         data: pts,
+        cursor: "pointer",
         symbolSize: (val: number[]) => 8 + Math.sqrt((val[2] || 0) / maxAmt) * 24,
-        itemStyle: { opacity: 0.9, borderColor: p.bg, borderWidth: 1 },
+        itemStyle: { opacity: 0.82, borderColor: p.panel, borderWidth: 1 },
         emphasis: { itemStyle: { opacity: 1, borderColor: p.text, borderWidth: 1 }, scale: 1.12 },
         label: {
           show: true,
-          formatter: (params: { data: { name: string } }) => (labelSet.has(params.data.name) ? params.data.name : ""),
+          formatter: (params: any) => (labelSet.has(params?.data?.name) ? params.data.name : ""),
           position: "top",
-          distance: 6,
+          distance: 5,
           color: p.text2,
-          fontSize: 10,
+          fontSize: 11,
         },
         labelLayout: { hideOverlap: true, moveOverlap: "shiftY" },
         markLine: {
@@ -305,14 +323,19 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string): EC
         },
         markArea: {
           silent: true,
-          data: [quad(0, x1, 50, 100), quad(0, x1, 0, 50), quad(x0, 0, 50, 100), quad(x0, 0, 0, 50)],
+          data: [
+            quad(0, x1, 50, 100, `${p.accent}03`),
+            quad(0, x1, 0, 50, `${p.muted}02`),
+            quad(x0, 0, 50, 100, `${p.copper}03`),
+            quad(x0, 0, 0, 50, `${p.down}03`),
+          ] as any,
         },
       },
     ],
   };
 }
 
-/** 收益分布直方图。 */
+/** 收益分布直方图 */
 export function distributionChart(
   p: Palette,
   bins: { b: number; n: number; lo: number; hi: number }[],
@@ -340,7 +363,7 @@ export function distributionChart(
 
   return {
     ...baseChart(p),
-    grid: { left: 6, right: 10, top: 16, bottom: 26, containLabel: true },
+    grid: { left: 6, right: 10, top: 16, bottom: 38, containLabel: true },
     tooltip: {
       ...baseChart(p).tooltip,
       formatter: (params: unknown) => {
@@ -355,16 +378,29 @@ export function distributionChart(
       max: 11,
       splitNumber: 6,
       ...axisStyle(p),
+      name: L(lang, "个股收益", "Return"),
+      nameLocation: "middle",
+      nameGap: 24,
+      nameTextStyle: { color: p.muted, fontSize: 11 },
+      axisLine: { show: true, lineStyle: { color: p.axis } },
+      axisTick: { show: true, lineStyle: { color: p.axis } },
       splitLine: { show: false },
       axisLabel: {
         ...axisStyle(p).axisLabel,
         formatter: "{value}%",
-        fontSize: 10,
+        fontSize: 11.5,
+        hideOverlap: true,
         showMinLabel: false,
         showMaxLabel: false,
       },
     },
-    yAxis: { type: "value", ...axisStyle(p), axisLabel: { show: false }, splitLine: { show: false } },
+    yAxis: {
+      type: "value",
+      ...axisStyle(p),
+      axisLine: { show: true, lineStyle: { color: p.axis } },
+      axisLabel: { ...axisStyle(p).axisLabel, fontSize: 11 },
+      splitLine: { show: false },
+    },
     series: [
       {
         type: "bar",
@@ -379,7 +415,7 @@ export function distributionChart(
             show: true,
             formatter: lang === "en" ? "median" : "中位数",
             color: p.muted,
-            fontSize: 9,
+            fontSize: 11,
             position: "end",
           },
         },

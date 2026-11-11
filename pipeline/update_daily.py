@@ -25,6 +25,7 @@ import pandas as pd
 from . import settings
 from .db import session
 from .quality_gates import run_gates
+from .sources import akshare_fallback as ak_fb
 
 DATASETS = ["daily", "daily_basic", "adj_factor", "stk_limit", "limit_list_d", "moneyflow", "margin"]
 
@@ -238,19 +239,36 @@ def insert(con: duckdb.DuckDBPyConnection, ds: str, df: pd.DataFrame, day: str) 
     return after - before
 
 
-def run(target: str | None = None, dry: bool = False) -> dict:
+def run(target: str | None = None, dry: bool = False, source: str = "auto") -> dict:
     started = time.time()
     report: dict = {"status": "ok", "days": [], "warnings": []}
-    with session() as con:
+    with session(read_only=(dry and source == "akshare")) as con:
         last = last_loaded(con)
         end = target or date.today().strftime("%Y%m%d")
         pro = None
-        if not dry:
+        if source in ("auto", "tushare"):
             pro = tushare_pro()
+        if source == "akshare":
+            day = target or date.today().strftime("%Y%m%d")
+            days = [day] if ak_fb.is_trading_day(day) else []
+            if dry:
+                counts = {}
+                for ds in DATASETS:
+                    try:
+                        df0 = ak_fb.fetch(con, ds, day)
+                        counts[ds] = 0 if df0 is None else len(df0)
+                    except Exception as e:
+                        counts[ds] = f"{type(e).__name__}: {e}"
+                report["probe"] = counts
+                report["from"] = last
+                report["to"] = day
+                report["pending"] = days
+                report["duration_sec"] = round(time.time() - started, 1)
+                return report
+        elif not dry:
             ensure_calendar(pro, con, end)
             days = open_days(con, last, end)
         else:
-            pro = tushare_pro()
             cal = pro.trade_cal(exchange="SSE", start_date=last, end_date=end)
             days = sorted(
                 cal.loc[(cal["is_open"] == 1) & (cal["cal_date"].astype(str) > last), "cal_date"]
@@ -267,21 +285,41 @@ def run(target: str | None = None, dry: bool = False) -> dict:
             report["duration_sec"] = round(time.time() - started, 1)
             return report
 
+        used: dict[str, str] = {}
         for day in days:
             day_started = time.time()
             inserted = {}
             for ds in DATASETS:
-                try:
-                    df = fetch(pro, ds, day)
-                    n = insert(con, ds, df, day)
-                    inserted[ds] = n
-                    log(f"{day} {ds}: {0 if df is None else len(df)} rows (inserted {n})")
-                except Exception as e:  # 单个数据集失败不阻断其它
-                    msg = f"{day} {ds} failed: {type(e).__name__}"
+                src = "tushare"
+                df = None
+                err: Exception | None = None
+                if source in ("auto", "tushare") and pro is not None:
+                    try:
+                        df = fetch(pro, ds, day)
+                    except Exception as e:  # 单数据集失败不阻断，尝试备用源
+                        err = e
+                        log(f"{day} {ds} tushare failed: {type(e).__name__}")
+                if (df is None or df.empty) and source in ("auto", "akshare"):
+                    try:
+                        fdf = ak_fb.fetch(con, ds, day)
+                        if fdf is not None and not fdf.empty:
+                            df = fdf
+                            src = "akshare"
+                            log(f"{day} {ds} fell back to akshare")
+                    except Exception as e:
+                        err = e
+                if df is None or df.empty:
+                    msg = f"{day} {ds} failed: {type(err).__name__ if err else 'empty'}"
                     if ds == "limit_list_d":
                         msg += " (no permission)"
                     log(msg)
                     report["warnings"].append(msg)
+                    used.setdefault(ds, "unavailable")
+                else:
+                    n = insert(con, ds, df, day)
+                    inserted[ds] = n
+                    used[ds] = src
+                    log(f"{day} {ds}: {len(df)} rows (inserted {n}, source {src})")
                 time.sleep(0.35)
             prev = con.execute(
                 "SELECT max(cal_date) FROM core_trade_cal WHERE is_open=1 AND cal_date < ? AND cal_date >= '20161201'",
@@ -304,6 +342,7 @@ def run(target: str | None = None, dry: bool = False) -> dict:
         con.execute("CHECKPOINT")
 
     report["duration_sec"] = round(time.time() - started, 1)
+    report["sources"] = used
     qlatest = settings.META / "quality" / "latest.json"
     qdata = json.loads(qlatest.read_text(encoding="utf-8")) if qlatest.exists() else {}
     gates = [{"id": g["id"], "pass": g["pass"]} for g in qdata.get("gates", [])]
@@ -316,16 +355,7 @@ def run(target: str | None = None, dry: bool = False) -> dict:
         "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "rows": {"daily": qdata.get("rows")},
         "coverage": coverage,
-        "sources": {
-            "daily": "tushare",
-            "daily_basic": "tushare",
-            "adj_factor": "tushare",
-            "stk_limit": "tushare",
-            "moneyflow": "tushare",
-            "margin": "tushare",
-            "index": "akshare",
-            "limit_list_d": "tushare (no permission)",
-        },
+        "sources": {**(used or {"daily": "tushare"}), "index": "akshare"},
         "gates": gates,
         "warnings": report["warnings"][-3:],
         "duration_sec": report["duration_sec"],
@@ -342,6 +372,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="目标日期 YYYYMMDD")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--source", choices=["auto", "tushare", "akshare"], default="auto", help="auto=Tushare 失败时降级 akshare")
     args = ap.parse_args()
 
     lock = settings.DATA / ".update.lock"
@@ -350,7 +381,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
     lock.write_text(str(time.time()), encoding="utf-8")
     try:
-        result = run(args.date, args.dry_run)
+        result = run(args.date, args.dry_run, args.source)
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     finally:
         lock.unlink(missing_ok=True)

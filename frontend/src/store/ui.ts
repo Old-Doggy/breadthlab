@@ -5,7 +5,8 @@ import type { Theme } from "../lib/theme";
 type Lang = "zh" | "en";
 
 const printMode = window.location.hash.startsWith("#/briefing");
-const initialTheme: Theme = printMode ? "light" : (localStorage.getItem("bl.theme") as Theme) || "dark";
+const queryTheme = new URLSearchParams(window.location.search).get("theme") as Theme | null;
+const initialTheme: Theme = printMode ? "light" : queryTheme || (localStorage.getItem("bl.theme") as Theme) || "dark";
 const initialLang: Lang =
   (new URLSearchParams(window.location.search).get("lang") as Lang) ||
   (localStorage.getItem("bl.lang") as Lang) ||

@@ -1,6 +1,8 @@
 """API 契约测试（Flask test client，不依赖网络）。"""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from backend.main import app
@@ -68,3 +70,20 @@ def test_watchlist_roundtrip(client):
     rows = client.get("/api/watchlist").get_json()
     assert any(r["ts_code"] == "000001.SZ" for r in rows)
     assert client.delete("/api/watchlist/000001.SZ").status_code == 200
+
+def test_connection_released_after_request(monkeypatch):
+    """请求结束后必须释放 DuckDB 锁，否则 17:35 的更新任务打不开库。"""
+    import duckdb as dd
+
+    import backend.main as m
+
+    db = Path(__file__).resolve().parents[1] / "data" / "tmp_lock_test.duckdb"
+    db.unlink(missing_ok=True)
+    dd.connect(str(db)).close()
+    monkeypatch.setattr(m, "LAKE", db)
+
+    with m.app.app_context():
+        assert m.con() is m.con()
+    # 上下文退出后连接应已关闭，此时可以拿到写连接
+    dd.connect(str(db)).close()
+    db.unlink(missing_ok=True)

@@ -1,28 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowDownRight, ArrowUpRight, FileText, Minus } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useUI } from "../store/ui";
 import { paletteFor } from "../lib/theme";
 import { money, num, pct, ratio, shortDate, trendClass, weekday } from "../lib/format";
-import { regimeLabel, regimeOf, verdict } from "../lib/regime";
-import { breadthArea, distributionChart, returnBreadth, sectorBubble } from "../lib/charts";
+import { headline, regimeLabel, regimeOf } from "../lib/regime";
+import { distributionChart, returnBreadth, sectorBubble } from "../lib/charts";
 import EChart from "../components/EChart";
-import { Card, MicroLabel } from "../components/Card";
+import { Card } from "../components/Card";
 import { Kpi } from "../components/Kpi";
-import { Link } from "react-router-dom";
-import { Zap } from "lucide-react";
+import { Prov } from "../components/PageHead";
+
+const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
 
 function Skeleton({ h = 320 }: { h?: number }) {
   return <div className="skeleton w-full" style={{ height: h }} />;
 }
 
-const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
-
 export default function Today() {
+  const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
+  const zh = lang === "zh";
   const { theme, colorblind } = useUI();
   const p = paletteFor(theme, colorblind);
 
@@ -51,298 +53,264 @@ export default function Today() {
 
   if (!series || !last) {
     return (
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-7">
-            <Skeleton h={208} />
-          </div>
-          <div className="col-span-5">
-            <Skeleton h={208} />
-          </div>
-        </div>
-        <div className="grid grid-cols-6 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} h={104} />
-          ))}
+      <div className="flex flex-col gap-3.5">
+        <Skeleton h={208} />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={92} />)}
         </div>
         <Skeleton h={380} />
       </div>
     );
   }
 
-  const last60 = series.slice(-60);
   const last120 = series.slice(-120);
   const last20 = series.slice(-21, -1);
   const regime = regimeOf(last);
   const tone = last.ew_ret >= 0 ? "up" : "down";
   const breadthPct = Math.round(last.breadth * 100);
   const prev = series[series.length - 2];
-
   const rank = series.slice(-250).filter((r) => r.breadth <= last.breadth).length;
   const breadthPctile = Math.round((rank / Math.max(1, series.slice(-250).length)) * 100);
+  const avg20Breadth = avg(last20.map((r) => r.breadth));
+  const breadthDelta = (last.breadth - avg20Breadth) * 100;
+
+  const contributors = detail?.contributors || [];
+  const topDrag = [...contributors].sort((a, b) => a.contrib - b.contrib)[0];
+  const contrib = contributors.slice(0, 5);
+  const maxAbs = Math.max(...contrib.map((c) => Math.abs(c.contrib)), 1e-9);
+
+  const sectors = detail?.sectors || [];
+  const boardTop = [...sectors].sort((a, b) => b.breadth - a.breadth).slice(0, 6);
+  const leaderTilt = [...sectors]
+    .filter((s) => s.n >= 30)
+    .sort((a, b) => Math.abs(b.cw_ret - b.ew_ret) - Math.abs(a.cw_ret - a.ew_ret))
+    .slice(0, 5);
+  const maxTilt = Math.max(...leaderTilt.map((s) => Math.abs(s.cw_ret - s.ew_ret)), 0.0001);
+  const broadSectors = sectors.filter((s) => s.breadth >= 0.6).length;
+  const limitRatio = last.limit_up_n / Math.max(1, avg(last20.map((r) => r.limit_up_n)));
+  const sparkDates = series.slice(-21).map((r) => r.trade_date);
 
   const kpis = [
+    {
+      label: t("metric.breadth"),
+      value: ratio(last.breadth, 0),
+      tone: "neutral" as const,
+      sub: `${num(last.n_adv)} ↑ / ${num(last.n_dec)} ↓ · ${zh ? `${breadthPctile} 分位` : `${ord(breadthPctile)} pct`}`,
+      to: "/regime",
+      spark: series.slice(-21).map((r) => r.breadth),
+      sparkTone: "accent" as const,
+      hint: zh ? "广度 = 上涨家数 /（上涨 + 下跌），平盘剔除" : "Breadth = advancers / (advancers + decliners), flat excluded",
+      main: true,
+    },
     {
       label: t("metric.ew"),
       value: pct(last.ew_ret),
       tone: tone as "up" | "down",
-      sub:
-        last.hs300_ret === null || last.hs300_ret === undefined
-          ? `${t("metric.cw")} ${pct(last.cw_ret)}`
-          : `${t("metric.index")} ${pct(last.hs300_ret)}`,
+      sub: `${t("metric.index")} ${pct(last.hs300_ret ?? last.cw_ret)}`,
       to: "/market",
       spark: series.slice(-21).map((r) => r.ew_ret),
       sparkTone: tone as "up" | "down",
-    },
-    {
-      label: t("metric.breadth"),
-      value: ratio(last.breadth, 0),
-      tone: (last.breadth >= 0.5 ? "up" : "down") as "up" | "down",
-      sub: `${last.n_adv} ↑ / ${last.n_dec} ↓ · ${lang === "en" ? `${ord(breadthPctile)} pct` : `${breadthPctile}分位`}`,
-      to: "/regime",
-      spark: series.slice(-21).map((r) => r.breadth),
-      sparkTone: "accent" as const,
+      hint: zh ? "全市场算术平均收益，等权口径" : "Arithmetic mean return, equal-weighted",
     },
     {
       label: t("metric.limitUp"),
-      value: `${num(last.limit_up_n)}`,
-      tone: "up" as const,
-      sub: `${t("metric.limitDown")} ${num(last.limit_down_n)}${last.broken_n ? ` · ${lang === "en" ? "broken" : "炸板"} ${num(last.broken_n)}` : ""}`,
+      value: num(last.limit_up_n),
+      tone: "neutral" as const,
+      sub: `${t("metric.limitDown")} ${num(last.limit_down_n)} · ${zh ? "最高" : "max"} ${last.max_streak ?? "—"} ${zh ? "板" : "boards"}`,
       to: "/sentiment",
       spark: series.slice(-21).map((r) => r.limit_up_n),
       sparkTone: "up" as const,
+      hint: zh ? "收盘价 ≥ 涨停价 × 0.999 记为涨停" : "Close ≥ limit-up price × 0.999",
     },
     {
       label: t("metric.amount"),
       value: money(last.amount),
       tone: "neutral" as const,
-      sub: `${t("common.sample")} ${num(last.n_valid)} ${lang === "en" ? "stocks" : "只"}`,
+      sub: `${zh ? "样本" : "Sample"} ${num(last.n_valid)} ${zh ? "只" : "stocks"}`,
       to: "/market",
       spark: series.slice(-21).map((r) => r.amount),
-      sparkTone: "accent" as const,
+      sparkTone: "neutral" as const,
+      hint: zh ? "全市场成交额，单位自适应" : "Total turnover, auto unit",
     },
     {
       label: t("metric.csd"),
       value: `${(last.csd * 100).toFixed(2)}pp`,
       tone: "neutral" as const,
-      sub: `${t("metric.median")} ${pct(last.med_ret)}`,
+      sub: `${t("metric.median")} ${pct(last.med_ret)} · IQR ${(last.iqr * 100).toFixed(2)}pp`,
       to: "/stocks",
       spark: series.slice(-21).map((r) => r.csd),
       sparkTone: "accent" as const,
-    },
-    {
-      label: t("metric.top10"),
-      value: `${(last.top10_contrib_pct ?? 0).toFixed(2)}pp`,
-      tone: "neutral" as const,
-      sub: `HHI ${num(last.hhi)} · ${lang === "en" ? "share" : "占比"} ${ratio(last.top10_share, 0)}`,
-      to: "/market",
-      spark: series.slice(-21).map((r) => r.top10_contrib_pct),
-      sparkTone: "up" as const,
+      hint: zh ? "横截面收益标准差，衡量个股分化" : "Cross-sectional return dispersion",
     },
   ];
 
-  const contrib = (detail?.contributors || []).slice(0, 10);
-  const maxAbs = Math.max(...contrib.map((c) => Math.abs(c.contrib)), 1e-9);
-
-  const sectors = detail?.sectors || [];
-  const boardTop = [...sectors].sort((a, b) => b.breadth - a.breadth).slice(0, 5);
-  const leaderTilt = [...sectors]
-    .filter((s) => s.n >= 30)
-    .sort((a, b) => b.cw_ret - b.ew_ret - (a.cw_ret - a.ew_ret))
-    .slice(0, 5);
-  const maxTilt = Math.max(...leaderTilt.map((s) => Math.abs(s.cw_ret - s.ew_ret)), 0.0001);
-
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3.5">
       {/* hero */}
-      <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-12 xl:col-span-7">
-          <div className="card relative h-full overflow-hidden p-[18px] md:p-[22px_24px]">
-            <div className="dotgrid pointer-events-none absolute inset-0 opacity-[0.35]" />
-            <div className="relative flex flex-wrap items-center gap-3">
-              <span className="mono text-[13px] text-[var(--text-2)]">{last.trade_date}</span>
-              <span className="text-[11px] text-[var(--muted)]">{weekday(last.trade_date, lang)}</span>
-              <span
-                className={`pill h-[24px] border-transparent ${
-                  regime === "broad_up" || regime === "concentrated_up"
-                    ? "chip-up"
-                    : regime === "broad_down"
-                      ? "chip-down"
-                      : "chip-accent"
-                }`}
-              >
+      <section className="card relative overflow-hidden">
+        <div className="grid gap-x-8 gap-y-5 p-4 md:grid-cols-[1.618fr_1fr] md:p-5 md:pb-3">
+          <div className="min-w-0">
+            <div className="kicker">
+              {last.trade_date} · {weekday(last.trade_date, lang)} · {zh ? "收盘后" : "After close"}
+              <span className="ml-auto hidden text-[var(--faint)] md:inline">{zh ? "盘面状态" : "MARKET STATE"}</span>
+            </div>
+            <h1 className="serif mt-2.5 max-w-[820px] break-words text-[22px] font-bold leading-[1.32] tracking-[-0.02em] text-[var(--text)] sm:text-[26px] md:text-[32px]">
+              {headline(last, lang)}
+            </h1>
+            <p className="mt-2 max-w-[680px] text-[12.5px] leading-[1.7] text-[var(--text-2)]">
+              {zh
+                ? `沪深300 ${pct(last.hs300_ret ?? last.cw_ret)}，等权 ${pct(last.ew_ret)}；上涨广度位于近一年 ${breadthPctile} 分位。拖累来自指数权重股，广度来自中小盘`
+                : `CSI 300 ${pct(last.hs300_ret ?? last.cw_ret)}, equal-weight ${pct(last.ew_ret)}; breadth sits at the ${ord(breadthPctile)} percentile of the past year. Heavyweights dragged, breadth came from small caps`}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className={`pill border-transparent ${regime === "broad_up" || regime === "concentrated_up" ? "chip-up" : regime === "broad_down" ? "chip-down" : "chip-accent"}`}>
                 {regimeLabel(regime, lang)}
               </span>
-              <span className="pill h-[24px]">
-                <span className="h-1 w-1 rounded-full bg-[var(--muted)]" />
-                {lang === "en" ? `${ord(breadthPctile)} breadth pct.` : `${breadthPctile}% 广度分位`}
-              </span>
-              <a
-                href="#/briefing"
-                target="_blank"
-                rel="noreferrer"
-                className="pill ml-auto h-[24px] gap-1 border-[var(--border)] text-[var(--text-2)] transition-colors hover:text-[var(--accent)]"
-              >
-                <FileText size={11} />
-                {lang === "en" ? "Briefing" : "每日简报"}
-              </a>
-            </div>
+              <span className="pill">{zh ? `广度 ${breadthPctile} 分位` : `${ord(breadthPctile)} breadth pct`}</span>
+              <span className="pill">CSD {(last.csd * 100).toFixed(2)}pp</span>
+              {topDrag && (
+                <span className="pill chip-copper border-transparent">
+                  {topDrag.name} {pct(topDrag.ret)}
+                </span>
+              )}
 
-            <h1
-              className="relative mt-4 max-w-[40ch] text-[16.5px] font-semibold leading-[1.55] tracking-tight text-[var(--text)] md:mt-5 md:text-[19px] md:leading-[1.6]"
-              style={{ textWrap: "balance" }}
-            >
-              {verdict(last, lang)}
-            </h1>
-
-            <div className="relative mt-5 grid grid-cols-3 gap-2 md:mt-6 md:gap-4">
-              {[
-                { k: lang === "en" ? "Adv / Dec" : "涨 / 跌", v: `${last.n_adv} / ${last.n_dec}` },
-                { k: t("metric.amount"), v: money(last.amount) },
-                {
-                  k: lang === "en" ? "Breadth vs 20d" : "广度较 20 日均值",
-                  v: `${((last.breadth - avg(last20.map((r) => r.breadth))) * 100).toFixed(1)}pp`,
-                },
-              ].map((s) => (
-                <div key={s.k}>
-                  <MicroLabel>{s.k}</MicroLabel>
-                  <div className="mono mt-1 text-[12.5px] font-medium text-[var(--text)] md:mt-1.5 md:text-[15px]">{s.v}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* breadth meter */}
-            <div className="relative mt-6">
-              <div className="h-[6px] w-full overflow-hidden rounded-full bg-[var(--panel-3)]">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{
-                    width: `${breadthPct}%`,
-                    background:
-                      last.breadth >= 0.6
-                        ? "linear-gradient(90deg, var(--up), var(--up))"
-                        : last.breadth < 0.45
-                          ? "linear-gradient(90deg, var(--down), var(--down))"
-                          : "linear-gradient(90deg, var(--accent), var(--accent))",
-                    opacity: 0.85,
-                  }}
-                />
-              </div>
-              <div className="mt-1.5 flex justify-between text-[10px] text-[var(--faint)]">
-                <span className="mono">0%</span>
-                <span className="mono">50%</span>
-                <span className="mono">100%</span>
-              </div>
             </div>
           </div>
-        </div>
 
-        <div className="col-span-12 xl:col-span-5">
-          <Card
-            title={t("today.participation")}
-            subtitle={lang === "en" ? "Share of stocks advancing, last 60 sessions" : "近 60 个交易日上涨股票占比"}
-            className="h-full"
-            right={
-              <div className="text-right">
-                <div className="mono text-[18px] font-semibold" style={{ color: p.accent }}>
-                  {ratio(last.breadth, 0)}
+          <div className="grid grid-cols-3 items-center gap-0 self-center">
+            {[
+              { k: zh ? "上涨占比" : "Breadth", v: ratio(last.breadth, 0), s: `${num(last.n_adv)} / ${num(last.n_dec)}`, tone: "text" },
+              { k: zh ? "等权收益" : "Equal-weight", v: pct(last.ew_ret), s: `${t("metric.index")} ${pct(last.hs300_ret ?? last.cw_ret)}`, tone: last.ew_ret >= 0 ? "up" : "down" },
+              { k: zh ? "成交额" : "Turnover", v: money(last.amount), s: `${zh ? "20D 均值" : "20D avg"} ${money(avg(last20.map((r) => r.amount)))}`, tone: "text" },
+            ].map((s, i) => (
+              <div key={s.k} className={`min-w-0 ${i ? "border-l border-[var(--border)] pl-4" : ""}`}>
+                <div className="micro truncate">{s.k}</div>
+                <div className={`mono mt-1.5 whitespace-nowrap text-[20px] leading-none tracking-[-0.04em] sm:text-[24px] md:text-[28px] ${s.tone === "up" ? "text-[var(--up)]" : s.tone === "down" ? "text-[var(--down)]" : "text-[var(--text)]"}`}>
+                  {s.v}
                 </div>
-                <div className="text-[10px] text-[var(--muted)]">{lang === "en" ? "today" : "今日"}</div>
+                <div className="mono mt-1.5 truncate text-[10.5px] text-[var(--faint)]">{s.s}</div>
               </div>
-            }
-            padded={false}
-            bodyClass="pt-0"
-          >
-            <div className="h-[150px] pr-2 md:h-[176px] md:pr-3">
-              <EChart option={breadthArea(p, last60)} />
-            </div>
-          </Card>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* kpis */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {kpis.map((k) => (
-          <Link key={k.label} to={k.to} className="block transition-transform hover:-translate-y-[1px]">
-            <Kpi {...k} />
+          <Link key={k.label} to={k.to} className="block transition-transform hover:-translate-y-px">
+            <Kpi {...k} sparkDates={sparkDates} />
           </Link>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-[7px] text-[10.5px] text-[var(--muted)]">
-        <span className="flex items-center gap-1 text-[var(--warn)]">
-          <Zap size={11} /> {lang === "en" ? "Notable" : "异动"}
-        </span>
-        {[
-          `${lang === "en" ? "Limit-ups" : "涨停"} ${num(last.limit_up_n)} · ${(last.limit_up_n / Math.max(1, avg(last20.map((r) => r.limit_up_n)))).toFixed(1)}× 20d`,
-          `${lang === "en" ? "Max streak" : "最高连板"} ${last.max_streak ?? "—"}`,
-          `${lang === "en" ? "Turnover vs 20d" : "成交额较 20 日"} ${(
-            (last.amount / Math.max(1, avg(last20.map((r) => r.amount))) - 1) * 100 >= 0 ? "+" : ""
-          )}${((last.amount / Math.max(1, avg(last20.map((r) => r.amount))) - 1) * 100).toFixed(0)}%`,
-        ].map((a) => (
-          <span key={a} className="rounded-md bg-[var(--panel-3)] px-2 py-[2px] text-[10px] text-[var(--text-2)]">
-            {a}
-          </span>
-        ))}
-      </div>
-
-      {/* main + contributors */}
-      <div className="grid grid-cols-12 gap-4">
+      {/* chart + narrative */}
+      <div className="grid grid-cols-12 gap-3.5">
         <div className="col-span-12 xl:col-span-8">
           <Card
+            index="01"
             title={t("market.returnBreadth")}
             subtitle={
-              lang === "en"
-                ? "Bars: equal-weight return · Line: CSI 300 · Lower panel: breadth"
-                : "柱：全市场等权收益 · 线：沪深300 · 下：上涨股票占比"
+              zh
+                ? "柱 = 全市场等权收益 · 线 = 沪深300 · 下 = 上涨股票占比 · 近 120 个交易日"
+                : "Bars = equal-weight return · Line = CSI 300 · Lower = breadth · 120 sessions"
             }
             right={
-              <div className="flex items-center gap-3 text-[10.5px] text-[var(--muted)]">
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-[7px] w-[7px] rounded-sm" style={{ background: p.up }} />
-                  {lang === "en" ? "up" : "涨"}
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-[7px] w-[7px] rounded-sm" style={{ background: p.down }} />
-                  {lang === "en" ? "down" : "跌"}
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: p.accent }} />
-                  {lang === "en" ? "breadth" : "广度"}
-                </span>
+              <div className="flex items-center gap-3 text-[10.5px] text-[var(--faint)]">
+                <span className="flex items-center gap-1"><i className="inline-block h-[6px] w-[6px] rounded-[1px]" style={{ background: p.up }} />{zh ? "涨" : "up"}</span>
+                <span className="flex items-center gap-1"><i className="inline-block h-[6px] w-[6px] rounded-[1px]" style={{ background: p.down }} />{zh ? "跌" : "down"}</span>
+                <span className="flex items-center gap-1"><i className="inline-block h-[2px] w-3" style={{ background: p.accent }} />{zh ? "广度" : "breadth"}</span>
               </div>
             }
+            prov={zh ? "等权收益 = 全市场算术平均；广度 = 上涨 /（上涨 + 下跌）" : "Equal-weight mean return; breadth = adv / (adv + dec)"}
             padded={false}
-            bodyClass="pt-1"
+            bodyClass="pt-0"
+            footer={
+              <div className="provline">
+                <span>SOURCE <b>daily / daily_basic</b></span>
+                <span>N <b>{num(last.n_valid)}</b></span>
+                <span>{zh ? "等权" : "equal-weight"}</span>
+                <span>{zh ? "截尾 1% / 99%" : "clipped 1% / 99%"}</span>
+                <a className="r hover:underline" href="#/about">{zh ? "口径说明 →" : "Method →"}</a>
+              </div>
+            }
           >
-            <div className="h-[300px] px-1 pb-1 md:h-[368px] md:px-2 md:pb-2">
-              <EChart option={returnBreadth(p, last120, lang)} ariaLabel="近120个交易日的等权收益、沪深300与上涨股票占比" />
+            <div className="h-[300px] px-1 pb-1 md:h-[356px] md:px-2">
+              <EChart option={returnBreadth(p, last120, lang)} ariaLabel={zh ? "近 120 日等权收益、沪深300 与上涨占比" : "120-day returns and breadth"} />
             </div>
           </Card>
         </div>
 
-        <div className="col-span-12 xl:col-span-4">
+        <div className="col-span-12 grid gap-3.5 xl:col-span-4 xl:grid-rows-[auto_1fr]">
           <Card
-            title={t("today.contributors")}
-            subtitle={lang === "en" ? "Weight × return contribution, today" : "今日 权重 × 涨跌幅 对指数的贡献"}
-            className="h-full"
+            index="02"
+            title={zh ? "今日三件事" : "Three things"}
+            subtitle={zh ? "权重股 / 广度 / 情绪" : "Weights / breadth / sentiment"}
             padded={false}
             bodyClass="pt-0"
           >
-            <div className="flex flex-col gap-[3px] px-4 pb-3">
-              {contrib.map((c) => {
+            <div className="px-4 pb-2 md:px-[18px]">
+              {[
+                {
+                  n: "01",
+                  h: zh ? `沪深300 ${pct(last.hs300_ret ?? last.cw_ret)}，等权 ${pct(last.ew_ret)}` : `CSI 300 ${pct(last.hs300_ret ?? last.cw_ret)} vs EW ${pct(last.ew_ret)}`,
+                  p: zh
+                    ? `Top10 波动占比 ${ratio(last.top10_share, 0)}${topDrag ? ` · ${topDrag.name} ${(topDrag.contrib * 100).toFixed(2)}pp` : ""}`
+                    : `CSI 300 ${pct(last.hs300_ret ?? last.cw_ret)} vs equal-weight ${pct(last.ew_ret)}`,
+                },
+                {
+                  n: "02",
+                  h: zh ? `${broadSectors} 个行业广度超过 60%` : `${broadSectors} sectors above 60% breadth`,
+                  p: zh
+                    ? `${sectors[0]?.sw_l1 ?? "—"} ${ratio(sectors[0]?.breadth ?? 0, 0)} · ${sectors[1]?.sw_l1 ?? "—"} ${ratio(sectors[1]?.breadth ?? 0, 0)}`
+                    : `${broadSectors} of 31 sectors have breadth above 60%`,
+                },
+                {
+                  n: "03",
+                  h: zh ? `涨停 ${num(last.limit_up_n)} 家，最高 ${last.max_streak ?? "—"} 板` : `${num(last.limit_up_n)} limit-ups, max streak ${last.max_streak ?? "—"}`,
+                  p: zh
+                    ? `20 日均值 ${limitRatio.toFixed(1)}× · 连板 ${num(last.streak_n)} 家`
+                    : `${num(last.limit_up_n)} limit-ups (${limitRatio.toFixed(1)}× 20d avg), max streak ${last.max_streak ?? "—"}`,
+                },
+              ].map((x, i) => (
+                <div key={x.n} className={`grid grid-cols-[26px_1fr] gap-2 py-2 ${i ? "border-t border-[var(--border)]" : ""}`}>
+                  <div className="serif pt-0.5 text-[19px] font-bold leading-none text-[var(--copper)]">{x.n}</div>
+                  <div>
+                    <div className="text-[12.5px] font-semibold leading-snug text-[var(--text)]">{x.h}</div>
+                    <p className="mt-0.5 text-[12px] leading-[1.55] text-[var(--muted)]">{x.p}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card
+            index="03"
+            title={zh ? "全市场收益贡献 Top 5" : "Market contribution Top 5"}
+            subtitle={zh ? "全市场流通市值权重 × 涨跌幅 · 单位 pp" : "All-A float-cap weight × return · pp"}
+            prov={zh ? "权重 = 前一日流通市值 / 全市场总流通市值；贡献 = 权重 × 个股涨跌幅" : "Weight = prior-day float cap / total A-share float cap; contribution = weight × return"}
+            right={<span className="pill">pp</span>}
+            padded={false}
+            bodyClass="pt-0"
+            className="min-h-0"
+          >
+            <div className="flex flex-col px-3 pb-2 md:px-3.5">
+              <div className="grid grid-cols-[16px_1fr_80px_56px] items-center gap-2 pb-1 text-[10px] text-[var(--faint)]">
+                <span />
+                <span className="col-span-2 text-center">{zh ? "拖累 ← 0 → 拉动" : "drag ← 0 → lift"}</span>
+                <span className="text-right">pp</span>
+              </div>
+              {contrib.map((c, i) => {
                 const half = (Math.abs(c.contrib) / maxAbs) * 50;
                 const positive = c.contrib >= 0;
                 return (
-                  <div key={c.ts_code} className="group grid grid-cols-[70px_1fr_46px] items-center gap-2 md:grid-cols-[86px_1fr_52px] md:gap-2.5 rounded-md px-2 py-[6px] hover:bg-[var(--panel-2)]">
-                    <div className="min-w-0">
-                      <div className="truncate text-[12px] leading-tight text-[var(--text)]">{c.name}</div>
-                      <div className="truncate text-[9.5px] leading-tight text-[var(--faint)]">{c.sw_l1}</div>
-                    </div>
-                    <div className="relative h-[7px] overflow-hidden rounded-[3px] bg-[var(--panel-3)]">
-                      <div className="absolute top-0 h-full w-px bg-[var(--border-strong)]" style={{ left: "50%" }} />
-                      <div
-                        className="absolute top-0 h-full rounded-[2px] transition-all duration-500"
+                  <div key={c.ts_code} className="grid h-[28px] grid-cols-[16px_1fr_80px_56px] items-center gap-2 border-b border-[var(--border)] last:border-0">
+                    <span className="mono text-[10.5px] text-[var(--faint)]">{String(i + 1).padStart(2, "0")}</span>
+                    <span className="truncate text-[12px] text-[var(--text-2)]">{c.name}</span>
+                    <span className="relative h-[5px] rounded-[2px] bg-[var(--surface-2)]">
+                      <span className="absolute top-0 h-full w-px bg-[var(--border-strong)]" style={{ left: "50%" }} />
+                      <span
+                        className="absolute top-0 h-full rounded-[2px]"
                         style={{
                           width: `${half}%`,
                           left: positive ? "50%" : `${50 - half}%`,
@@ -350,96 +318,122 @@ export default function Today() {
                           opacity: 0.85,
                         }}
                       />
-                    </div>
-                    <div className={`mono text-right text-[11px] ${trendClass(c.ret)}`}>{pct(c.ret)}</div>
+                    </span>
+                    <span className="mono text-right text-[11.5px] text-[var(--muted)]">
+                      {c.contrib >= 0 ? "+" : ""}{(c.contrib * 100).toFixed(2)}
+                    </span>
                   </div>
                 );
               })}
-              {!contrib.length && <div className="py-10 text-center text-[12px] text-[var(--muted)]">{t("common.loading")}</div>}
+              {!contrib.length && <div className="py-8 text-center text-[12px] text-[var(--muted)]">{t("common.loading")}</div>}
+            </div>
+            <div className="provline">
+              <span>Top10 波动占比 <b>{ratio(last.top10_share, 0)}</b></span>
+              <span>{zh ? "集中度" : "concentration"} HHI <b>{num(last.hhi)}</b></span>
+              <a className="r hover:underline" href="#/stocks">{zh ? "点击查看全部 →" : "View all →"}</a>
             </div>
           </Card>
         </div>
       </div>
 
-      {/* sector + distribution */}
-      <div className="grid grid-cols-12 gap-4">
+      {/* bubble + distribution */}
+      <div className="grid grid-cols-12 gap-3.5">
         <div className="col-span-12 xl:col-span-7">
           <Card
-            title={`${t("sectors.title")} · ${t("sectors.bubble")}`}
-            subtitle={
-              lang === "en"
-                ? "Bubble size = turnover · quadrants split at 0% return and 50% breadth"
-                : "气泡大小 = 行业成交额 · 参考线为 0% 收益与 50% 广度"
-            }
+            index="04"
+            title={zh ? "行业参与：收益 × 广度" : "Sector participation: return × breadth"}
+            subtitle={zh ? "横轴 = 行业等权收益 · 纵轴 = 上涨占比 · 气泡 = 成交额 · 四象限：普涨 / 集中 / 普跌 / 分化" : "x = sector EW return, y = breadth, size = turnover · quadrants at 0% / 50%"}
             right={
-              <div className="flex items-center gap-2.5 text-[9.5px] text-[var(--muted)]">
+              <div className="flex items-center gap-2.5 text-[10.5px] text-[var(--faint)]">
                 {[
-                  { c: p.up, l: lang === "en" ? "Broad" : "普涨" },
-                  { c: "#e8a33d", l: lang === "en" ? "Narrow" : "集中" },
-                  { c: "#5b8cff", l: lang === "en" ? "Cap drag" : "权重拖累" },
-                  { c: p.down, l: lang === "en" ? "Selloff" : "普跌" },
+                  { c: p.up, l: zh ? "普涨" : "Broad" },
+                  { c: p.copper, l: zh ? "集中" : "Narrow" },
+                  { c: p.down, l: zh ? "普跌" : "Selloff" },
+                  { c: p.muted, l: zh ? "分化" : "Mixed" },
                 ].map((q) => (
                   <span key={q.l} className="flex items-center gap-1">
-                    <span className="inline-block h-[6px] w-[6px] rounded-full" style={{ background: q.c }} />
+                    <i className="inline-block h-[6px] w-[6px] rounded-full" style={{ background: q.c }} />
                     {q.l}
                   </span>
                 ))}
               </div>
             }
+            prov={zh ? "横轴行业等权收益，纵轴行业内上涨占比，气泡面积按成交额" : "x = sector EW return, y = breadth, size = turnover"}
             padded={false}
             bodyClass="pt-0"
+            footer={
+              <div className="provline">
+                <span>SOURCE <b>daily / sw_daily</b></span>
+                <span>N <b>{sectors.length}</b></span>
+                <span>{zh ? "申万一级" : "SW L1"}</span>
+                <a className="r hover:underline" href="#/sectors">{zh ? "点击下钻 →" : "Drill in →"}</a>
+              </div>
+            }
           >
-            <div className="h-[280px] px-1 pb-1 md:h-[336px] md:px-2 md:pb-2">
-              {sectors.length ? <EChart option={sectorBubble(p, sectors, lang)} ariaLabel="行业收益与上涨占比气泡图" /> : <Skeleton h={320} />}
+            <div className="h-[286px] px-1 pb-1 md:px-2">
+              {sectors.length ? <EChart
+                  option={sectorBubble(p, sectors, lang)}
+                  onEvents={{
+                    click: (params: unknown) => {
+                      const name = (params as { data?: { name?: string } })?.data?.name;
+                      if (name) navigate(`/sectors?sector=${encodeURIComponent(name)}`);
+                    },
+                  }}
+                  ariaLabel={zh ? "行业收益与广度气泡图" : "Sector return vs breadth"}
+                /> : <Skeleton h={286} />}
             </div>
           </Card>
         </div>
 
         <div className="col-span-12 xl:col-span-5">
           <Card
+            index="05"
             title={t("today.distribution")}
-            subtitle={
-              lang === "en"
-                ? "Cross-section of stock returns today (clipped at ±11%)"
-                : "当日个股收益横截面分布（显示截尾 ±11%）"
-            }
-            right={
-              <span className="pill h-[22px] px-2 text-[10px]">
-                {t("common.sample")} {num(dist?.stats.n || last.n_valid)}
-              </span>
-            }
+            subtitle={zh ? "当日个股收益横截面 · 截尾 ±11% · 纵轴：只数" : "Cross-section of stock returns, clipped ±11% · y: count"}
+            right={<span className="pill">{zh ? "样本" : "N"} {num(dist?.stats.n || last.n_valid)}</span>}
+            prov={zh ? "横截面直方图，中位线为当日个股收益中位数" : "Histogram of stock returns, median marked"}
             padded={false}
             bodyClass="pt-0"
+            footer={
+              <div className="provline">
+                <span>CSD <b>{(last.csd * 100).toFixed(2)}pp</b></span>
+                <span>IQR <b>{(last.iqr * 100).toFixed(2)}pp</b></span>
+                <span>{zh ? "偏度" : "skew"} <b>{last.skew.toFixed(2)}</b></span>
+                <span className="r">daily / daily_basic</span>
+              </div>
+            }
           >
-            <div className="h-[280px] px-1 pb-1 md:h-[336px] md:px-2 md:pb-2">
+            <div className="h-[286px] px-1 pb-1 md:px-2">
               {dist?.bins?.length ? (
-                <EChart option={distributionChart(p, dist.bins, dist.stats, lang)} ariaLabel="当日个股收益分布直方图" />
+                <EChart option={distributionChart(p, dist.bins, dist.stats, lang)} ariaLabel={zh ? "个股收益分布" : "Return distribution"} />
               ) : (
-                <Skeleton h={320} />
+                <Skeleton h={286} />
               )}
             </div>
           </Card>
         </div>
       </div>
 
-      {/* sector breadth board */}
-      <div className="grid grid-cols-12 gap-4">
+      {/* sector board + cap tilt */}
+      <div className="grid grid-cols-12 gap-3.5">
         <div className="col-span-12 xl:col-span-6">
           <Card
-            title={lang === "en" ? "Broadest sectors" : "行业广度 · 最广泛参与"}
-            subtitle={lang === "en" ? "Ranked by share of constituents advancing" : "按行业内上涨股票占比排序"}
+            index="06"
+            title={zh ? "行业广度 · 最广泛参与" : "Broadest sectors"}
+            subtitle={zh ? "按行业内上涨股票占比排序" : "Ranked by share of constituents advancing"}
+            prov={zh ? "行业内上涨家数 /（上涨 + 下跌）" : "Advancers / (advancers + decliners)"}
             padded={false}
             bodyClass="pt-1"
           >
-            <div className="flex flex-col px-4 pb-3">
+            <div className="flex flex-col px-4 pb-2 md:px-[18px]">
               {boardTop.map((s) => (
-                <div key={s.sw_l1} className="flex items-center gap-3 border-b border-[var(--border)] py-[9px] last:border-0">
-                  <span className="w-[68px] truncate text-[11.5px] text-[var(--text-2)] md:w-[92px] md:text-[12px]">{s.sw_l1}</span>
-                  <div className="h-[4px] flex-1 rounded-full bg-[var(--panel-3)]">
-                    <div className="h-full rounded-full" style={{ width: `${s.breadth * 100}%`, background: p.accent, opacity: 0.75 }} />
+                <div key={s.sw_l1} className="grid grid-cols-[76px_1fr_40px_48px] items-center gap-2 border-b border-[var(--border)] py-[7px] last:border-0 md:grid-cols-[92px_1fr_44px_52px]">
+                  <span className="truncate text-[11.5px] text-[var(--text-2)]">{s.sw_l1}</span>
+                  <div className="h-[4px] rounded-full bg-[var(--surface-2)]">
+                    <div className="h-full rounded-full" style={{ width: `${s.breadth * 100}%`, background: p.accent, opacity: 0.8 }} />
                   </div>
-                  <span className="mono w-[36px] text-right text-[11px] text-[var(--text)] md:w-[42px] md:text-[11.5px]">{ratio(s.breadth, 0)}</span>
-                  <span className={`mono w-[46px] text-right text-[10.5px] md:w-[52px] md:text-[11px] ${trendClass(s.ew_ret)}`}>{pct(s.ew_ret)}</span>
+                  <span className="mono text-right text-[11px] text-[var(--text)]">{ratio(s.breadth, 0)}</span>
+                  <span className={`mono text-right text-[11px] ${trendClass(s.ew_ret)}`}>{pct(s.ew_ret)}</span>
                 </div>
               ))}
             </div>
@@ -447,31 +441,37 @@ export default function Today() {
         </div>
         <div className="col-span-12 xl:col-span-6">
           <Card
-            title={lang === "en" ? "Large-cap tilt · cap-weight minus equal-weight" : "龙头拉动 · 市值加权 − 等权"}
-            subtitle={
-              lang === "en"
-                ? "Positive = heavyweights outperformed the typical stock"
-                : "为正说明行业涨幅由大市值龙头贡献，而非多数股票"
-            }
+            index="07"
+            title={zh ? "大盘股 vs 等权" : "Large caps vs equal weight"}
+            subtitle={zh ? "行业流通市值加权 − 行业等权 · 按绝对差排序 · 左 = 等权更强，右 = 大市值更强" : "Float-cap weighted − equal weighted · sorted by absolute gap · left = EW stronger, right = large caps stronger"}
+            prov={zh ? "权重 = 前一日流通市值 / 行业总流通市值；横条 = 行业市值加权收益 − 等权收益" : "Weight = prior-day float cap / sector float cap; bar = CW return − EW return"}
             padded={false}
             bodyClass="pt-1"
           >
-            <div className="flex flex-col px-4 pb-3">
+            <div className="flex flex-col px-4 pb-2 md:px-[18px]">
+              <div className="grid grid-cols-[76px_1fr_58px] items-center gap-2 pb-1 text-[10.5px] text-[var(--faint)] md:grid-cols-[92px_1fr_64px]">
+                <span />
+                <div className="flex items-center justify-between">
+                  <span>{zh ? "← 等权更强" : "← EW stronger"}</span>
+                  <span>{zh ? "大市值更强 →" : "large caps →"}</span>
+                </div>
+                <span />
+              </div>
               {leaderTilt.map((s) => {
                 const tilt = s.cw_ret - s.ew_ret;
-                const w = Math.min(100, (Math.abs(tilt) / maxTilt) * 100);
+                const w = Math.min(50, (Math.abs(tilt) / maxTilt) * 50);
                 return (
-                  <div key={s.sw_l1} className="flex items-center gap-3 border-b border-[var(--border)] py-[9px] last:border-0">
-                    <span className="w-[68px] truncate text-[11.5px] text-[var(--text-2)] md:w-[92px] md:text-[12px]">{s.sw_l1}</span>
-                    <div className="relative h-[4px] flex-1 overflow-hidden rounded-full bg-[var(--panel-3)]">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${w}%`, background: tilt >= 0 ? p.up : p.down, opacity: 0.75 }}
+                  <div key={s.sw_l1} className="grid grid-cols-[76px_1fr_58px] items-center gap-2 border-b border-[var(--border)] py-[7px] last:border-0 md:grid-cols-[92px_1fr_64px]">
+                    <span className="truncate text-[11.5px] text-[var(--text-2)]">{s.sw_l1}</span>
+                    <div className="relative h-[7px] rounded-full bg-[var(--surface-2)]">
+                      <span className="absolute inset-y-0 left-1/2 z-10 w-px bg-[var(--text)]" />
+                      <span
+                        className="absolute inset-y-0 rounded-full bg-[var(--accent)]"
+                        style={{ width: `${w}%`, left: tilt >= 0 ? "50%" : `${50 - w}%`, opacity: 0.75 }}
                       />
                     </div>
-                    <span className={`mono w-[56px] text-right text-[11px] ${trendClass(tilt)}`}>
-                      {tilt >= 0 ? "+" : ""}
-                      {(tilt * 100).toFixed(2)}pp
+                    <span className="mono text-right text-[11.5px] text-[var(--text-2)]">
+                      {tilt >= 0 ? "+" : ""}{(tilt * 100).toFixed(2)}pp
                     </span>
                   </div>
                 );
@@ -481,12 +481,15 @@ export default function Today() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between pb-2 pt-1 text-[10.5px] text-[var(--faint)]">
-        <span>
-          {lang === "en" ? "Source: Tushare Pro · daily / daily_basic / stk_limit" : "数据源：Tushare Pro · daily / daily_basic / stk_limit"}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-1 pt-0.5 text-[10.5px] text-[var(--faint)]">
+        <span className="font-mono">
+          {zh ? "数据源：Tushare Pro · daily / daily_basic / stk_limit" : "Source: Tushare Pro · daily / daily_basic / stk_limit"}
         </span>
         <span className="mono">
-          {d} · {last.n_valid} stocks · {lang === "en" ? "prev" : "前值"} {prev ? shortDate(prev.trade_date) : "—"}
+          {d} · {num(last.n_valid)} {zh ? "只" : "stocks"} · {zh ? "前值" : "prev"} {prev ? shortDate(prev.trade_date) : "—"}
+          <a className="ml-2 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline" href="#/about">
+            <ArrowUpRight size={10} /> {zh ? "口径与方法" : "Method"}
+          </a>
         </span>
       </div>
     </div>

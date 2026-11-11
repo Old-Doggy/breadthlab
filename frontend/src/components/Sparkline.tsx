@@ -23,7 +23,8 @@ export function Sparkline({ values, tone = "neutral", width = 84, height = 26, f
     tone === "up" ? "var(--up)" : tone === "down" ? "var(--down)" : tone === "accent" ? "var(--accent)" : "var(--muted)";
   const id = `sg-${tone}-${width}-${height}-${values.length}-${Math.round(values[0] * 1e6)}`;
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="近 20 个交易日走势">
+      <title>近 20 个交易日走势</title>
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.22" />

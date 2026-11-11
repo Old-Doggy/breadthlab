@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Sparkline } from "./Sparkline";
-import { MicroLabel } from "./Card";
 
 interface KpiProps {
   label: string;
@@ -9,33 +8,60 @@ interface KpiProps {
   delta?: ReactNode;
   tone?: "up" | "down" | "accent" | "neutral";
   spark?: number[];
+  sparkDates?: string[];
   sparkTone?: "up" | "down" | "accent" | "neutral";
   accent?: boolean;
+  hint?: string;
+  main?: boolean;
 }
 
-export function Kpi({ label, value, sub, delta, tone = "neutral", spark, sparkTone, accent = false }: KpiProps) {
+export function Kpi({
+  label,
+  value,
+  sub,
+  delta,
+  tone = "neutral",
+  spark,
+  sparkDates,
+  sparkTone,
+  accent = false,
+  hint,
+  main = false,
+}: KpiProps) {
   const valueColor =
     tone === "up" ? "var(--up)" : tone === "down" ? "var(--down)" : tone === "accent" ? "var(--accent)" : "var(--text)";
   return (
-    <div className="card flex min-w-0 flex-col justify-between gap-2 overflow-hidden p-3 md:gap-3 md:p-[18px]">
-      <div className="flex items-center justify-between gap-2">
-        <MicroLabel>{label}</MicroLabel>
-        {delta && <span className="mono text-[10px] text-[var(--muted)] md:text-[10.5px]">{delta}</span>}
+    <div className={`card relative flex min-w-0 flex-col justify-between overflow-hidden px-3.5 py-3 md:px-4 ${main ? "md:py-3.5" : ""}`}>
+      <div className="flex items-center gap-1.5">
+        <div className="micro truncate">{label}</div>
+        {hint && (
+          <span className="prov ml-auto" title={hint} aria-label={hint} role="img">
+            ?
+          </span>
+        )}
+        {!hint && delta && <span className="mono ml-auto text-[10.5px] text-[var(--muted)]">{delta}</span>}
       </div>
-      <div className="flex items-end justify-between gap-2">
+      <div className="mt-1.5 flex items-end justify-between gap-2">
         <div
-          className="mono whitespace-nowrap text-[19px] font-semibold leading-none tracking-tight md:text-[22px]"
+          className={`mono whitespace-nowrap font-medium leading-none tracking-[-0.03em] ${main ? "text-[28px] md:text-[32px]" : "text-[22px] md:text-[25px]"}`}
           style={{ color: accent ? "var(--accent)" : valueColor }}
         >
           {value}
         </div>
         {spark && spark.length > 1 && (
-          <div className="hidden shrink-0 opacity-90 sm:block">
-            <Sparkline values={spark} tone={sparkTone || tone} width={58} height={22} />
+          <div className="hidden shrink-0 flex-col items-end gap-0.5 pb-0.5 sm:flex" title="近 20 个交易日走势">
+            <span className="font-mono text-[10.5px] leading-none text-[var(--faint)]">近20日</span>
+            <Sparkline values={spark} tone={sparkTone || tone} width={84} height={23} />
+            {sparkDates && sparkDates.length > 1 && (
+              <div className="mono flex w-[84px] justify-between text-[10.5px] leading-none text-[var(--faint)]">
+                <span>{sparkDates[0].slice(5).replace("-", "/")}</span>
+                <span>{sparkDates[sparkDates.length - 1].slice(5).replace("-", "/")}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
-      {sub && <div className="truncate text-[10px] leading-tight text-[var(--muted)] md:text-[11px]">{sub}</div>}
+      {sub && <div className="mt-1 truncate text-[11.5px] leading-tight text-[var(--faint)]">{sub}</div>}
     </div>
   );
 }

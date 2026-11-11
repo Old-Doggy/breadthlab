@@ -10,6 +10,7 @@ import { regimeScatter, regimeColor } from "../lib/charts2";
 import { regimeLabel, regimeOf, type RegimeKey } from "../lib/regime";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
+import { PageHead } from "../components/PageHead";
 import { Segmented } from "../components/Segmented";
 
 const RANGES = [
@@ -30,6 +31,7 @@ function std(xs: number[]) {
 export default function Regime() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
+  const zh = lang === "zh";
   const { theme, colorblind } = useUI();
   const p = paletteFor(theme, colorblind);
   const [params, setParams] = useSearchParams();
@@ -124,22 +126,29 @@ export default function Regime() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[19px] font-semibold tracking-tight">{t("regime.title")}</h1>
-          <p className="mt-1 text-[12px] text-[var(--muted)]">{t("regime.subtitle")}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[10.5px] text-[var(--faint)]">
-            {lang === "en" ? "click any dot to inspect" : "点击任意点查看该日"}
-          </span>
-          <Segmented options={RANGES.map((r) => ({ value: r.value, label: r.label }))} value={range} onChange={setRange} />
-        </div>
-      </div>
+      <PageHead
+        kicker={`${zh ? "市场状态" : "Market state"} / ${rows[0].trade_date} → ${rows[rows.length - 1].trade_date} · ${total}D`}
+        title={zh ? "收益 × 广度：四种状态" : "Return × breadth: four states"}
+        dek={
+          zh
+            ? "横轴是等权收益，纵轴是上涨股票占比；按 0% 和 50% 分成四个区间，点的大小是成交额，虚线是最近 30 个交易日的轨迹"
+            : "x = equal-weight return, y = share of advancers; split at 0% and 50%, size = turnover, dashed line = last 30 sessions"
+        }
+        chips={
+          <>
+            <span className="pill">{zh ? "点选任意一天" : "Click any day"}</span>
+            <span className="pill">{zh ? "大小 = 成交额" : "Size = turnover"}</span>
+            <span className="pill">{zh ? "虚线 = 最近 30 日轨迹" : "Dashed = last 30 sessions"}</span>
+          </>
+        }
+        right={<Segmented options={RANGES.map((r) => ({ value: r.value, label: r.label }))} value={range} onChange={setRange} />}
+      />
 
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-12 xl:col-span-9">
           <Card
+            index="01"
+            prov={zh ? "散点 = 交易日；横轴等权收益，纵轴上涨占比，大小按成交额" : "Each dot = a session; x = EW return, y = breadth, size = turnover"}
             title={t("regime.scatter")}
             subtitle={
               lang === "en"
@@ -149,18 +158,18 @@ export default function Regime() {
             right={
               selRow ? (
                 <div className="flex items-center gap-2">
-                  <span className="mono text-[11px] text-[var(--text-2)]">{selRow.trade_date}</span>
-                  <span className="pill h-[22px] px-2 text-[10px]">{regimeLabel(regimeOf(selRow), lang)}</span>
+                  <span className="mono text-[12px] text-[var(--text-2)]">{selRow.trade_date}</span>
+                  <span className="pill h-[24px] px-2 text-[11px]">{regimeLabel(regimeOf(selRow), lang)}</span>
                 </div>
               ) : null
             }
             padded={false}
             bodyClass="pt-0"
           >
-            <div className="h-[480px] px-1 pb-1">
+            <div className="h-[500px] px-1 pb-1 md:h-[520px]">
               <EChart
                 option={regimeScatter(p, rows, selected, lang)}
-                ariaLabel="收益与广度的状态散点图，含四象限与近30日轨迹"
+                ariaLabel="收益与广度的状态散点图，含四象限与近 30 日轨迹"
                 onEvents={{
                   click: (params: unknown) => {
                     const d = (params as { data?: { trade_date?: string } })?.data?.trade_date;
@@ -173,7 +182,7 @@ export default function Regime() {
         </div>
 
         <div className="col-span-12 flex flex-col gap-4 xl:col-span-3">
-          <Card title={t("regime.stats")} subtitle={lang === "en" ? `${total} sessions in range` : `区间共 ${total} 个交易日`}>
+          <Card index="02" title={t("regime.stats")} subtitle={lang === "en" ? `${total} sessions in range` : `区间共 ${total} 个交易日`}>
             <div className="flex flex-col gap-3">
               {KEYS.map((k) => {
                 const n = counts[k];
@@ -181,13 +190,13 @@ export default function Regime() {
                 return (
                   <div key={k}>
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2 text-[11.5px] text-[var(--text-2)]">
+                      <span className="flex items-center gap-2 text-[12.5px] text-[var(--text-2)]">
                         <span className="h-[7px] w-[7px] rounded-full" style={{ background: regimeColor(k) }} />
                         {regimeLabel(k, lang)}
                       </span>
-                      <span className="mono text-[11.5px] text-[var(--text)]">
+                      <span className="mono text-[12.5px] text-[var(--text)]">
                         {n}
-                        <span className="ml-1 text-[10px] text-[var(--muted)]">{ratio(share, 0)}</span>
+                        <span className="ml-1 text-[11px] text-[var(--muted)]">{ratio(share, 0)}</span>
                       </span>
                     </div>
                     <div className="mt-1.5 h-[3px] w-full rounded-full bg-[var(--panel-3)]">
@@ -199,14 +208,14 @@ export default function Regime() {
             </div>
 
             <div className="mt-4 border-t border-[var(--border)] pt-3">
-              <div className="grid grid-cols-[1fr_42px_50px_54px] text-[9px] uppercase tracking-wider text-[var(--faint)]">
+              <div className="grid grid-cols-[1fr_42px_50px_54px] text-[11px] uppercase tracking-wider text-[var(--faint)]">
                 <span>{lang === "en" ? "Regime" : "状态"}</span>
                 <span className="text-right">{lang === "en" ? "dur" : "持续"}</span>
                 <span className="text-right">{lang === "en" ? "fwd5" : "后5日"}</span>
                 <span className="text-right">{lang === "en" ? "fwd20" : "后20日"}</span>
               </div>
               {regimeStats.map((s) => (
-                <div key={s.k} className="grid grid-cols-[1fr_42px_50px_54px] items-center py-[3px] text-[10px]">
+                <div key={s.k} className="grid grid-cols-[1fr_42px_50px_54px] items-center py-[3px] text-[11.5px]">
                   <span className="flex items-center gap-1.5 text-[var(--text-2)]">
                     <span className="h-[5px] w-[5px] rounded-full" style={{ background: regimeColor(s.k) }} />
                     {regimeLabel(s.k, lang)}
@@ -216,15 +225,12 @@ export default function Regime() {
                   <span className={`mono text-right ${trendClass(s.fwd20)}`}>{s.fwd20 == null ? "—" : pct(s.fwd20)}</span>
                 </div>
               ))}
-              <p className="mt-2 text-[9px] leading-relaxed text-[var(--faint)]">
-                {lang === "en"
-                  ? "Forward returns are descriptive, not predictive."
-                  : "后续收益为区间描述性统计，不代表预测。"}
-              </p>
+
             </div>
           </Card>
 
           <Card
+            index="03"
             title={t("regime.similar")}
             subtitle={
               lang === "en"
@@ -241,13 +247,13 @@ export default function Regime() {
                   onClick={() => setSel(r.trade_date)}
                   className="flex items-center gap-2 rounded-md px-2 py-[7px] text-left transition-colors hover:bg-[var(--panel-2)]"
                 >
-                  <span className="mono w-[58px] text-[11px] text-[var(--text-2)]">{shortDate(r.trade_date)}</span>
-                  <span className={`mono w-[46px] text-[10.5px] ${r.ew_ret >= 0 ? "up" : "down"}`}>{pct(r.ew_ret)}</span>
-                  <span className="mono w-[38px] text-[10.5px] text-[var(--muted)]">{ratio(r.breadth, 0)}</span>
-                  <span className="ml-auto mono text-[10px] text-[var(--faint)]">d={d.toFixed(2)}</span>
+                  <span className="mono w-[58px] text-[12px] text-[var(--text-2)]">{shortDate(r.trade_date)}</span>
+                  <span className={`mono w-[46px] text-[11.5px] ${r.ew_ret >= 0 ? "up" : "down"}`}>{pct(r.ew_ret)}</span>
+                  <span className="mono w-[38px] text-[11.5px] text-[var(--muted)]">{ratio(r.breadth, 0)}</span>
+                  <span className="ml-auto mono text-[11px] text-[var(--faint)]">d={d.toFixed(2)}</span>
                 </button>
               ))}
-              {!similar.length && <div className="py-6 text-center text-[11px] text-[var(--muted)]">—</div>}
+              {!similar.length && <div className="py-6 text-center text-[12px] text-[var(--muted)]">—</div>}
             </div>
           </Card>
         </div>

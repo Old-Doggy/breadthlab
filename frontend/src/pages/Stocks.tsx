@@ -1,20 +1,22 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Search, Star, X } from "lucide-react";
 import { api, type StockRow } from "../lib/api";
 import { useUI } from "../store/ui";
-import { paletteFor, axisStyle, baseChart } from "../lib/theme";
+import { paletteFor, axisStyle, baseChart, type Palette } from "../lib/theme";
 import { money, num, pct, ratio, shortDate, trendClass } from "../lib/format";
 import { downloadCsv } from "../lib/download";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
+import { PageHead } from "../components/PageHead";
 
 type SortKey = "ret" | "circ_mv" | "turnover_rate" | "amount";
 
 type Bar = { trade_date: string; open: number; high: number; low: number; close: number; vol: number };
 
-function klineOption(p: (typeof palettes)["dark"], bars: Bar[]) {
+function klineOption(p: Palette, bars: Bar[]) {
   const dates = bars.map((b) => shortDate(b.trade_date));
   const ohlc = bars.map((b) => [b.open, b.close, b.low, b.high]);
   const vols = bars.map((b) => ({
@@ -43,11 +45,11 @@ function klineOption(p: (typeof palettes)["dark"], bars: Bar[]) {
         gridIndex: 1,
         ...axisStyle(p),
         splitLine: { show: false },
-        axisLabel: { ...axisStyle(p).axisLabel, fontSize: 8, interval: Math.max(0, Math.floor(dates.length / 4)) },
+        axisLabel: { ...axisStyle(p).axisLabel, fontSize: 11, interval: Math.max(0, Math.floor(dates.length / 4)) },
       },
     ],
     yAxis: [
-      { scale: true, gridIndex: 0, ...axisStyle(p), axisLabel: { ...axisStyle(p).axisLabel, fontSize: 9 } },
+      { scale: true, gridIndex: 0, ...axisStyle(p), axisLabel: { ...axisStyle(p).axisLabel, fontSize: 11 } },
       { gridIndex: 1, axisLabel: { show: false }, splitLine: { show: false } },
     ],
     series: [
@@ -65,6 +67,7 @@ function klineOption(p: (typeof palettes)["dark"], bars: Bar[]) {
 export default function Stocks() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
+  const zh = lang === "zh";
   const { theme, colorblind } = useUI();
   const p = paletteFor(theme, colorblind);
   const qc = useQueryClient();
@@ -73,6 +76,7 @@ export default function Stocks() {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("ret");
   const [sel, setSel] = useState<StockRow | null>(null);
+  const [params, setParams] = useSearchParams();
 
   const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const d = meta?.last_trade_date;
@@ -86,6 +90,17 @@ export default function Stocks() {
     queryFn: () => api.stocks(d as string, sector || undefined),
     enabled: !!d,
   });
+
+  useEffect(() => {
+    const code = params.get("stock");
+    if (!code || !stocks?.length) return;
+    const hit = stocks.find((s) => s.ts_code.toLowerCase() === code.toLowerCase());
+    if (!hit) return;
+    setSel(hit);
+    const next = new URLSearchParams(params);
+    next.delete("stock");
+    setParams(next, { replace: true });
+  }, [params, stocks, setParams]);
 
   const { data: series } = useQuery({
     queryKey: ["stock-series", sel?.ts_code],
@@ -113,8 +128,15 @@ export default function Stocks() {
     [sectors],
   );
 
+  const scatterPool = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const base = q ? all.filter((s) => s.name?.toLowerCase().includes(q) || s.ts_code.toLowerCase().includes(q)) : all;
+    const step = Math.max(1, Math.ceil(base.length / 800));
+    return base.filter((_, i) => i % step === 0);
+  }, [all, query]);
+
   const scatterOption = useMemo(() => {
-    const pts = filtered.slice(0, 3000).map((s) => ({
+    const pts = scatterPool.map((s) => ({
       name: s.name,
       value: [
         Math.log10(Math.max((s.circ_mv || 1) / 1e4, 0.5)),
@@ -124,7 +146,7 @@ export default function Stocks() {
       ],
       itemStyle: {
         color: s.ret >= 0 ? p.up : p.down,
-        opacity: s.is_limit_up || s.is_limit_down ? 1 : 0.55,
+        opacity: s.is_limit_up || s.is_limit_down ? 1 : p.bg === "#f6f2e8" ? 0.72 : 0.55,
         borderColor: s.is_limit_up || s.is_limit_down ? p.text : "transparent",
         borderWidth: s.is_limit_up || s.is_limit_down ? 1 : 0,
       },
@@ -158,7 +180,7 @@ export default function Stocks() {
         axisLabel: {
           ...axisStyle(p).axisLabel,
           formatter: (v: number) => `${Math.round(Math.pow(10, v))}亿`,
-          fontSize: 9,
+          fontSize: 11,
           showMaxLabel: false,
         },
       },
@@ -167,7 +189,7 @@ export default function Stocks() {
         min: -ymax,
         max: ymax,
         ...axisStyle(p),
-        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 10 },
+        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11 },
       },
       series: [
         {
@@ -189,7 +211,7 @@ export default function Stocks() {
         },
       ],
     } as never;
-  }, [filtered, p]);
+  }, [scatterPool, p]);
 
   const histOption = useMemo(() => {
     const vals = filtered.map((s) => s.ret * 100);
@@ -213,7 +235,7 @@ export default function Stocks() {
         splitNumber: 4,
         ...axisStyle(p),
         splitLine: { show: false },
-        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 9, showMinLabel: false, showMaxLabel: false },
+        axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11, showMinLabel: false, showMaxLabel: false },
       },
       yAxis: { type: "value", ...axisStyle(p), axisLabel: { show: false }, splitLine: { show: false } },
       series: [
@@ -236,32 +258,31 @@ export default function Stocks() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[19px] font-semibold tracking-tight">{t("stocks.title")}</h1>
-          <p className="mt-1 text-[12px] text-[var(--muted)]">{t("stocks.subtitle")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("common.search")}
-              className="h-[28px] w-[200px] rounded-lg border border-[var(--border)] bg-[var(--panel-2)] pl-8 pr-3 text-[11.5px] text-[var(--text)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--border-strong)]"
-            />
+      <PageHead
+        kicker={`${zh ? "个股分化" : "Stocks"} / ${d}`}
+        title={zh ? "行业内，谁在涨谁在跌" : "Who is up and down inside the sector"}
+        dek={zh ? "按市值、换手率、涨跌停与估值分位查看个股；点击散点打开个股详情" : "Inspect constituents by float cap, turnover, limit moves and valuation percentile; click a dot to open details"}
+        chips={<><span className="pill">{zh ? "点击散点查看详情" : "Click a dot for detail"}</span><span className="pill">{zh ? "排序后前 100 只" : "Top 100 after sorting"}</span></>}
+        right={
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("common.search")}
+                className="h-[34px] w-[220px] rounded-lg border border-[var(--border)] bg-[var(--surface)] pl-8 pr-3 text-[12.5px] text-[var(--text)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--border-strong)]"
+              />
+            </div>
+            <span className="pill"><span className="mono">{filtered.length}</span><span>{zh ? "只" : "stocks"}</span></span>
           </div>
-          <span className="pill h-[28px]">
-            <span className="mono">{filtered.length}</span>
-            <span className="text-[10px]">{lang === "en" ? "stocks" : "只"}</span>
-          </span>
-        </div>
-      </div>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           onClick={() => setSector("")}
-          className={`rounded-full border px-3 py-[5px] text-[11px] transition-colors ${
+          className={`rounded-full border px-3 py-[5px] text-[12px] transition-colors ${
             sector === "" ? "border-transparent bg-[var(--accent)] text-white" : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
           }`}
         >
@@ -271,14 +292,14 @@ export default function Stocks() {
           <button
             key={s.sw_l1}
             onClick={() => setSector(s.sw_l1 === sector ? "" : s.sw_l1)}
-            className={`rounded-full border px-3 py-[5px] text-[11px] transition-colors ${
+            className={`rounded-full border px-3 py-[5px] text-[12px] transition-colors ${
               sector === s.sw_l1
                 ? "border-transparent bg-[var(--accent)] text-white"
                 : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]"
             }`}
           >
             {s.sw_l1}
-            <span className="ml-1.5 text-[9.5px] opacity-60">{s.n}</span>
+            <span className="ml-1.5 text-[11px] opacity-60">{s.n}</span>
           </button>
         ))}
       </div>
@@ -293,8 +314,8 @@ export default function Stocks() {
                 : "横轴 = 流通市值（对数）· 纵轴 = 当日收益 · 描边为涨跌停"
             }
             right={
-              <span className="pill h-[22px] px-2 text-[10px]">
-                {lang === "en" ? "click a dot for detail" : "点击查看详情"}
+              <span className="text-[11px] text-[var(--faint)]">
+                {lang === "en" ? "click a dot for detail" : "点击散点查看详情"}
               </span>
             }
             padded={false}
@@ -320,7 +341,7 @@ export default function Stocks() {
               title={
                 <span className="flex items-center gap-2">
                   {sel.name}
-                  <span className="mono text-[10px] font-normal text-[var(--faint)]">{sel.ts_code}</span>
+                  <span className="mono text-[11px] font-normal text-[var(--faint)]">{sel.ts_code}</span>
                 </span>
               }
               subtitle={`${sel.sw_l1} · ${sel.market}`}
@@ -338,7 +359,7 @@ export default function Stocks() {
                   <EChart option={klineOption(p, series)} />
                 </div>
               ) : (
-                <div className="mb-3 rounded-md border border-dashed border-[var(--border)] px-2 py-3 text-center text-[10px] text-[var(--faint)]">
+                <div className="mb-3 rounded-md border border-dashed border-[var(--border)] px-2 py-3 text-center text-[11px] text-[var(--faint)]">
                   {lang === "en"
                     ? "K-line history is available for top-60 / sample stocks in static mode; full history needs the Flask API."
                     : "静态模式下仅 Top60 / 示例股带 K 线；完整历史需本地 Flask 服务。"}
@@ -356,7 +377,7 @@ export default function Stocks() {
                   <div key={x.k} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2">
                     <MicroLabel>{x.k}</MicroLabel>
                     <div className={`mono mt-1 text-[14px] font-medium ${x.tone || ""}`}>{x.v}</div>
-                    {x.sub ? <div className="mt-0.5 text-[9px] text-[var(--faint)]">{x.sub}</div> : null}
+                    {x.sub ? <div className="mt-0.5 text-[10.5px] text-[var(--faint)]">{x.sub}</div> : null}
                   </div>
                 ))}
               </div>
@@ -366,13 +387,13 @@ export default function Stocks() {
                     await api.addWatch(sel.ts_code);
                     qc.invalidateQueries({ queryKey: ["watchlist"] });
                   }}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] py-2 text-[11.5px] text-[var(--text-2)] transition-colors hover:text-[var(--text)]"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] py-2 text-[12.5px] text-[var(--text-2)] transition-colors hover:text-[var(--text)]"
                 >
                   <Star size={13} />
                   {lang === "en" ? "Add to watchlist" : "加入自选"}
                 </button>
               </div>
-              <div className="mt-3 flex items-center justify-between text-[10.5px] text-[var(--faint)]">
+              <div className="mt-3 flex items-center justify-between text-[11.5px] text-[var(--faint)]">
                 <span>
                   {sel.is_limit_up ? (lang === "en" ? "limit-up" : "涨停") : sel.is_limit_down ? (lang === "en" ? "limit-down" : "跌停") : "—"}
                 </span>
@@ -384,7 +405,7 @@ export default function Stocks() {
               title={t("stocks.distribution")}
               subtitle={lang === "en" ? "Cross-section of the filtered universe" : "当前筛选范围的收益分布"}
               right={
-                <span className="pill h-[22px] px-2 text-[10px]">
+                <span className="pill h-[24px] px-2 text-[11px]">
                   ↑ {ratio(up / Math.max(1, filtered.length), 0)}
                 </span>
               }
@@ -414,7 +435,7 @@ export default function Stocks() {
       <Card
         title={lang === "en" ? "Constituents" : "个股明细"}
         subtitle={
-          lang === "en" ? "Top 200 after sorting · click a row for detail" : "排序后展示前 200 只 · 点击查看详情"
+          lang === "en" ? "Top 100 after sorting · click a row for detail" : "排序后展示前 100 只 · 点击查看详情"
         }
         right={
           <div className="flex items-center gap-1">
@@ -429,7 +450,7 @@ export default function Stocks() {
               <button
                 key={k}
                 onClick={() => setSortKey(k)}
-                className={`rounded-md px-2 py-[3px] text-[10px] transition-colors ${
+                className={`rounded-md px-2 py-[3px] text-[11px] transition-colors ${
                   sortKey === k ? "bg-[var(--panel-3)] text-[var(--text)]" : "text-[var(--muted)] hover:text-[var(--text)]"
                 }`}
               >
@@ -456,7 +477,7 @@ export default function Stocks() {
                   `breadthlab_stocks_${d ?? ""}.csv`,
                 )
               }
-              className="ml-1 rounded-md border border-[var(--border)] px-1.5 py-[2px] text-[9.5px] text-[var(--muted)] hover:text-[var(--text)]"
+              className="ml-1 h-[28px] rounded-md border border-[var(--border)] px-2.5 text-[11.5px] text-[var(--muted)] hover:text-[var(--text)]"
               title={lang === "en" ? "Export filtered rows" : "导出当前筛选结果"}
             >
               CSV
@@ -467,9 +488,9 @@ export default function Stocks() {
         bodyClass="pt-0"
       >
         <div className="max-h-[420px] overflow-y-auto px-3 pb-2">
-          <table className="w-full border-collapse text-[11px]">
+          <table className="w-full border-collapse text-[12px]">
             <thead className="sticky top-0 z-10 bg-[var(--panel)]">
-              <tr className="text-left text-[9.5px] uppercase tracking-wider text-[var(--faint)]">
+              <tr className="text-left text-[11px] uppercase tracking-wider text-[var(--faint)]">
                 <th className="py-2 pl-2 font-medium">{lang === "en" ? "Name" : "名称"}</th>
                 <th className="font-medium">{lang === "en" ? "Sector" : "行业"}</th>
                 <th className="text-right font-medium">{lang === "en" ? "Return" : "收益"}</th>
@@ -480,7 +501,7 @@ export default function Stocks() {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 200).map((s) => (
+              {filtered.slice(0, 100).map((s) => (
                 <tr
                   key={s.ts_code}
                   onClick={() => setSel(s)}
@@ -488,11 +509,11 @@ export default function Stocks() {
                 >
                   <td className="py-[7px] pl-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="truncate text-[11.5px] text-[var(--text)]">{s.name}</span>
-                      <span className="mono text-[9px] text-[var(--faint)]">{s.ts_code}</span>
+                      <span className="truncate text-[12.5px] text-[var(--text)]">{s.name}</span>
+                      <span className="mono text-[10.5px] text-[var(--faint)]">{s.ts_code}</span>
                     </div>
                   </td>
-                  <td className="text-[10.5px] text-[var(--muted)]">{s.sw_l1}</td>
+                  <td className="text-[11.5px] text-[var(--muted)]">{s.sw_l1}</td>
                   <td className={`mono text-right ${trendClass(s.ret)}`}>{pct(s.ret)}</td>
                   <td className="mono text-right text-[var(--text-2)]">{(s.circ_mv / 1e4).toFixed(0)}亿</td>
                   <td className="mono text-right text-[var(--text-2)]">{(s.turnover_rate || 0).toFixed(1)}%</td>
@@ -505,7 +526,7 @@ export default function Stocks() {
         </div>
       </Card>
 
-      <div className="flex items-center justify-between pb-2 text-[10.5px] text-[var(--faint)]">
+      <div className="flex items-center justify-between pb-2 text-[11.5px] text-[var(--faint)]">
         <span>{lang === "en" ? "Universe: SSE + SZSE main board / ChiNext / STAR" : "股票池：沪深主板 + 创业板 + 科创板"}</span>
         <span className="mono">
           {num(filtered.length)} {lang === "en" ? "rows" : "只"} · {d}

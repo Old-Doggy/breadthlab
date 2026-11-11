@@ -101,3 +101,20 @@
 **决定**：`scripts/briefing.ps1` 用 `Start-Process` 调 Edge，先把单文件复制到 **ASCII 临时路径**（中文路径会让 Edge CLI 失败），再拷回 `data/snapshots/YYYYMMDD/`；脚本存为 UTF-8 BOM 以兼容 Windows PowerShell 5.1。
 
 **后果**：PDF 与页面视觉一致；简报失败只告警，不阻断数据更新。
+
+---
+
+## ADR-10 备用数据源：akshare 快照，逐数据集降级
+
+**背景**：核心数据几乎全部来自 Tushare；积分不足、限流或故障会直接断更。本地快照同样是 Tushare 导出，不能算独立源。
+
+**选项**：A) 只用 Tushare，接受断更；B) 接入 akshare/东方财富做当日降级；C) 接入 baostock 做历史第二源。
+
+**决定**：B。`daily`、`daily_basic`、`stk_limit`、`adj_factor` 四个数据集由 akshare 全市场快照兜底；逐数据集 `auto` 降级，`status.json` 记录实际来源。C 作为后续可选。
+
+**后果**：
+- 当日广度、涨跌停、市值加权不会因 Tushare 故障而缺失
+- 复权因子用前一日顺延，除权日会偏一天
+- 涨跌停价为规则计算值，可能与交易所差 0.01 元
+- 资金流、两融、涨停明细仍只有 Tushare，缺失时显示 `—`
+- 快照只能补当天，历史回补仍依赖 Tushare/本地快照

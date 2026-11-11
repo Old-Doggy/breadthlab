@@ -79,3 +79,12 @@ datasets:
     fallback: [snapshot]
     key: [ts_code]
     required: [name, industry, market, exchange, list_status]
+degradation:
+  daily: {fallback: akshare, mode: same-day, note: "全市场快照，收盘后可用"}
+  daily_basic: {fallback: akshare, mode: same-day, note: "市值/换手/PE/PB 全覆盖"}
+  stk_limit: {fallback: akshare, mode: computed, note: "按昨收与板块规则计算，误差 ±0.01"}
+  adj_factor: {fallback: akshare, mode: carry-forward, note: "前一日顺延，除权日偏一天"}
+  limit_list_d: {fallback: none, note: "无权限；涨停/连板改用价格判定"}
+  moneyflow: {fallback: none, note: "缺失时显示 —"}
+  margin: {fallback: none, note: "T+1，缺失时显示 —"}
+  index_daily: {fallback: tushare, note: "主源已是 akshare"}
