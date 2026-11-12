@@ -47,6 +47,8 @@ Flask API ──► React + ECharts（深/浅主题、中/英）
 
 `pipeline.release` 是 API/Windows 共用完整入口；`--rebuild` 仅验质、重建和导出。逐数据集记录完成状态，重查近20个交易日及旧缺口；两融/资金流/事件另行回补。Windows 工作日17:35触发，周日02:00重建；任务账户应使用上海时区。
 
+Windows 下双击 `start.bat` 启动 Web 端：脚本验证解释器、复用已运行服务、必要时构建前端并打开浏览器；`stop.bat` 停止。端口可用 `BREADTHLAB_PORT` 覆盖（默认 8000）。
+
 ## 质量门禁
 
 | # | 检查 | 级别 |

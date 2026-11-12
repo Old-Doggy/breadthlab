@@ -1,5 +1,5 @@
 PY ?= python
-.PHONY: bootstrap update marts status export briefing test lint dev all
+.PHONY: bootstrap update marts status export briefing test lint dev all start stop
 
 bootstrap:
 	$(PY) -m pipeline.bootstrap
@@ -27,5 +27,11 @@ lint:
 
 dev:
 	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
+
+start:
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1
+
+stop:
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 
 all: update briefing

@@ -47,6 +47,8 @@ Stack: DuckDB for local columnar aggregation, Flask for the API, React + TypeScr
 
 On Windows, `scripts/update.ps1` wraps the chain for the 17:35 weekday task; Sunday 02:00 runs a full rebuild.
 
+Double-click `start.bat` to launch the web app: it validates the interpreter, reuses a running server, builds the frontend if needed and opens the browser; `stop.bat` stops it. Override the port with `BREADTHLAB_PORT` (default 8000).
+
 ## Quality gates
 
 | # | Check | Level |

@@ -793,4 +793,5 @@ def static_files(path: str):
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8000, debug=False, threaded=True)
+    port = int(os.getenv("BREADTHLAB_PORT", "8000"))
+    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)

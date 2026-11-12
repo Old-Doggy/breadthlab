@@ -28,6 +28,10 @@
 
 要求：Python 3.12、Node 22.18+、Tushare Pro token（基础接口需 2000 积分，其他接口权限分别确认）。
 
+### 一键启动（Windows）
+
+双击 `start.bat`：自动选择带依赖的 Python、启动服务并打开 http://127.0.0.1:8000；若服务已在运行则直接打开。停止双击 `stop.bat`。首次缺少前端构建时会自动执行 `npm install && npm run build`。
+
 ```bash
 git clone https://github.com/Old-Doggy/breadthlab.git
 cd breadthlab

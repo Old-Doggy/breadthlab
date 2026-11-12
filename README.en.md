@@ -28,6 +28,10 @@ Computes breadth, equal- and cap-weighted returns, concentration, sector partici
 
 Requirements: Python 3.12, Node 22.18+, a Tushare Pro token (additional endpoints require their own permissions).
 
+### One-click start (Windows)
+
+Double-click `start.bat`: it picks a Python with duckdb/tushare, starts the server and opens http://127.0.0.1:8000. If it is already running, it just opens the page. Double-click `stop.bat` to stop it. A missing frontend build is created with `npm install && npm run build`.
+
 ```bash
 git clone https://github.com/Old-Doggy/breadthlab.git
 cd breadthlab
