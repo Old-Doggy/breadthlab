@@ -4,13 +4,16 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $updateScript = Join-Path $root "scripts\update.ps1"
 $rebuildScript = Join-Path $root "scripts\rebuild.ps1"
+$py = & (Join-Path $PSScriptRoot "python.ps1")
+$pyLiteral = $py.Replace("'", "''")
 
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
   -ExecutionTimeLimit (New-TimeSpan -Minutes 45)
 
+# 把已验证的解释器写进任务，避免计划任务环境里 PATH 指向缺少依赖的 python。
+$dailyArgs = "-NoProfile -ExecutionPolicy Bypass -Command `"`$env:BREADTHLAB_PYTHON='$pyLiteral'; & '$updateScript'`""
 $dailyAction = New-ScheduledTaskAction -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$updateScript`"" `
-  -WorkingDirectory $root
+  -Argument $dailyArgs -WorkingDirectory $root
 $dailyTrigger = New-ScheduledTaskTrigger -Weekly `
   -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 17:35
 
@@ -18,9 +21,9 @@ Register-ScheduledTask -TaskName "BreadthLab Daily Update" `
   -Action $dailyAction -Trigger $dailyTrigger -Settings $settings `
   -Description "BreadthLab: 收盘后增量更新 A 股数据并重新导出 dashboard" -Force | Out-Null
 
+$weeklyArgs = "-NoProfile -ExecutionPolicy Bypass -Command `"`$env:BREADTHLAB_PYTHON='$pyLiteral'; & '$rebuildScript'`""
 $weeklyAction = New-ScheduledTaskAction -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$rebuildScript`"" `
-  -WorkingDirectory $root
+  -Argument $weeklyArgs -WorkingDirectory $root
 $weeklyTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 02:00
 
 Register-ScheduledTask -TaskName "BreadthLab Weekly Rebuild" `
@@ -29,4 +32,5 @@ Register-ScheduledTask -TaskName "BreadthLab Weekly Rebuild" `
 
 Write-Host "已注册：BreadthLab Daily Update（周一至周五 17:35）"
 Write-Host "已注册：BreadthLab Weekly Rebuild（周日 02:00）"
+Write-Host "使用解释器：$py"
 Write-Host "手动运行：Start-ScheduledTask -TaskName 'BreadthLab Daily Update'"
