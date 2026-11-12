@@ -2,6 +2,7 @@ import type { EChartsOption } from "echarts";
 import type { RotationDay, SectorRank } from "./api";
 import { axisStyle, baseChart, type Palette, seriesColors } from "./theme";
 import { shortDate } from "./format";
+import { cumulativeReturns, escapeHtml } from "./html";
 
 const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
 
@@ -30,7 +31,10 @@ export function rotationBump(
   const stable = [...stats].sort((a, b) => a.avg - b.avg).slice(0, 3).map((s) => s.name);
   const movers = [...stats].sort((a, b) => b.range - a.range).slice(0, 2).map((s) => s.name);
   const picked = [...new Set([...stable, ...movers])].slice(0, topN);
-  if (selected && !picked.includes(selected)) picked[picked.length - 1] = selected;
+  if (selected && !picked.includes(selected)) {
+    if (picked.length) picked[picked.length - 1] = selected;
+    else picked.push(selected);
+  }
 
   return {
     ...baseChart(p),
@@ -58,10 +62,10 @@ export function rotationBump(
           .sort((a, b) => Number(a.value) - Number(b.value))
           .map(
             (a) =>
-              `<div style="display:flex;justify-content:space-between;gap:14px"><span>${a.seriesName}</span><b>#${a.value}</b></div>`,
+              `<div style="display:flex;justify-content:space-between;gap:14px"><span>${escapeHtml(a.seriesName)}</span><b>#${a.value}</b></div>`,
           )
           .join("");
-        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:4px">${shortDate(date)}</div>${rows}`;
+        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:4px">${escapeHtml(shortDate(date))}</div>${rows}`;
       },
     },
     xAxis: {
@@ -81,7 +85,7 @@ export function rotationBump(
       type: "value",
       inverse: true,
       min: 1,
-      max: bySector.size,
+      max: Math.max(1, bySector.size),
       interval: 5,
       ...axisStyle(p),
       axisLabel: { ...axisStyle(p).axisLabel, fontSize: 11, formatter: "#{value}" },
@@ -99,14 +103,14 @@ export function rotationBump(
         symbol: "circle",
         symbolSize: isSel ? 4.5 : hasSelection ? 3.4 : 3,
         smooth: 0.12,
-        connectNulls: true,
+        connectNulls: false,
         lineStyle: {
           width: isSel ? 2.8 : hasSelection ? 1.8 : 1.7,
           color,
           opacity: isSel ? 1 : hasSelection ? 0.42 : 0.82,
         },
         itemStyle: { color, opacity: isSel ? 1 : hasSelection ? 0.46 : 1 },
-        triggerLineEvent: true,
+        triggerEvent: true,
         endLabel: {
           show: isSel,
           formatter: name,
@@ -168,7 +172,7 @@ export function rotationPulse(p: Palette, rows: RotationDay[], lang: string): EC
         const arr = params as { dataIndex: number }[];
         const x = data[arr[0]?.dataIndex ?? 0];
         if (!x) return "";
-        return `<div style="font-family:monospace;font-size:12px;color:${p.muted}">${x.month}</div>
+        return `<div style="font-family:monospace;font-size:12px;color:${p.muted}">${escapeHtml(x.month)}</div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "月均轮动", "Monthly avg")}</span><b>${x.value.toFixed(2)}</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "交易日", "Sessions")}</span><b>${x.n}</b></div>`;
       },
@@ -236,13 +240,7 @@ export function monthlyPathChart(
   lang: string,
 ): EChartsOption {
   const colors = seriesColors(p);
-  const paths = series.map((s) => {
-    let v = 1;
-    return s.values.map((r) => {
-      if (r != null) v *= 1 + r;
-      return +((v - 1) * 100).toFixed(2);
-    });
-  });
+  const paths = series.map((s) => cumulativeReturns(s.values).map((v) => v == null ? null : +(v * 100).toFixed(2)));
   return {
     ...baseChart(p),
     grid: { left: 8, right: 12, top: 44, bottom: 34, containLabel: true },
@@ -266,10 +264,10 @@ export function monthlyPathChart(
       formatter: (params: unknown) => {
         const arr = params as { dataIndex: number; seriesName: string; value: number; color: string }[];
         const i = arr?.[0]?.dataIndex ?? 0;
-        return `<div style="min-width:150px"><div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${months[i]}</div>${arr
+        return `<div style="min-width:150px"><div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${escapeHtml(months[i])}</div>${arr
           .map(
             (x) =>
-              `<div style="display:flex;justify-content:space-between;gap:16px"><span><i style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${x.color};margin-right:5px"></i>${x.seriesName}</span><b>${Number(x.value).toFixed(2)}%</b></div>`,
+              `<div style="display:flex;justify-content:space-between;gap:16px"><span>${escapeHtml(x.seriesName)}</span><b>${x.value == null ? "—" : Number(x.value).toFixed(2) + "%"}</b></div>`,
           )
           .join("")}</div>`;
       },

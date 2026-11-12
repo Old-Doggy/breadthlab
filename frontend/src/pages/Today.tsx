@@ -11,9 +11,11 @@ import { distributionChart, returnBreadth, sectorBubble } from "../lib/charts";
 import EChart from "../components/EChart";
 import { Card } from "../components/Card";
 import { Kpi } from "../components/Kpi";
+import { DataState } from "../components/DataState";
+import { indexSummary, percentile } from "../lib/viewMetrics";
 import { Prov } from "../components/PageHead";
 
-const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const avg = (xs: number[]) => { const valid = xs.filter((x) => x != null && Number.isFinite(x)); return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : NaN; };
 const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
 
 function Skeleton({ h = 320 }: { h?: number }) {
@@ -28,10 +30,10 @@ export default function Today() {
   const { theme, colorblind } = useUI();
   const p = paletteFor(theme, colorblind);
 
-  const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
+  const { data: meta, isError: metaError, isPending: metaPending } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const end = meta?.last_trade_date;
 
-  const { data: series } = useQuery({
+  const { data: series, isError: seriesError, isPending: seriesPending } = useQuery({
     queryKey: ["market-series", end],
     queryFn: () => api.marketSeries(undefined, end),
     enabled: !!end,
@@ -51,6 +53,8 @@ export default function Today() {
     enabled: !!d,
   });
 
+  if (metaError || seriesError) return <DataState error />;
+  if ((!metaPending && !end) || (series && !series.length)) return <DataState />;
   if (!series || !last) {
     return (
       <div className="flex flex-col gap-3.5">
@@ -70,9 +74,10 @@ export default function Today() {
   const breadthPct = Math.round(last.breadth * 100);
   const prev = series[series.length - 2];
   const rank = series.slice(-250).filter((r) => r.breadth <= last.breadth).length;
-  const breadthPctile = Math.round((rank / Math.max(1, series.slice(-250).length)) * 100);
+  const breadthPctile = percentile(series.slice(-250).map((r) => r.breadth), last.breadth);
+  const breadthRank = breadthPctile == null ? "—" : String(breadthPctile);
   const avg20Breadth = avg(last20.map((r) => r.breadth));
-  const breadthDelta = (last.breadth - avg20Breadth) * 100;
+  const breadthDelta = last.breadth == null ? NaN : (last.breadth - avg20Breadth) * 100;
 
   const contributors = detail?.contributors || [];
   const topDrag = [...contributors].sort((a, b) => a.contrib - b.contrib)[0];
@@ -87,7 +92,8 @@ export default function Today() {
     .slice(0, 5);
   const maxTilt = Math.max(...leaderTilt.map((s) => Math.abs(s.cw_ret - s.ew_ret)), 0.0001);
   const broadSectors = sectors.filter((s) => s.breadth >= 0.6).length;
-  const limitRatio = last.limit_up_n / Math.max(1, avg(last20.map((r) => r.limit_up_n)));
+  const limitAverage = avg(last20.map((r) => r.limit_up_n));
+  const limitRatio = last.limit_up_n == null || !(limitAverage > 0) ? null : last.limit_up_n / limitAverage;
   const sparkDates = series.slice(-21).map((r) => r.trade_date);
 
   const kpis = [
@@ -95,7 +101,7 @@ export default function Today() {
       label: t("metric.breadth"),
       value: ratio(last.breadth, 0),
       tone: "neutral" as const,
-      sub: `${num(last.n_adv)} ↑ / ${num(last.n_dec)} ↓ · ${zh ? `${breadthPctile} 分位` : `${ord(breadthPctile)} pct`}`,
+      sub: `${num(last.n_adv)} ↑ / ${num(last.n_dec)} ↓ · ${zh ? `${breadthRank} 分位` : `${breadthPctile == null ? "—" : ord(breadthPctile)} pct`}`,
       to: "/regime",
       spark: series.slice(-21).map((r) => r.breadth),
       sparkTone: "accent" as const,
@@ -106,7 +112,7 @@ export default function Today() {
       label: t("metric.ew"),
       value: pct(last.ew_ret),
       tone: tone as "up" | "down",
-      sub: `${t("metric.index")} ${pct(last.hs300_ret ?? last.cw_ret)}`,
+      sub: `${t("metric.index")} ${pct(last.hs300_ret)}`,
       to: "/market",
       spark: series.slice(-21).map((r) => r.ew_ret),
       sparkTone: tone as "up" | "down",
@@ -159,14 +165,14 @@ export default function Today() {
             </h1>
             <p className="mt-2 max-w-[680px] text-[12.5px] leading-[1.7] text-[var(--text-2)]">
               {zh
-                ? `沪深300 ${pct(last.hs300_ret ?? last.cw_ret)}，等权 ${pct(last.ew_ret)}；上涨广度位于近一年 ${breadthPctile} 分位。拖累来自指数权重股，广度来自中小盘`
-                : `CSI 300 ${pct(last.hs300_ret ?? last.cw_ret)}, equal-weight ${pct(last.ew_ret)}; breadth sits at the ${ord(breadthPctile)} percentile of the past year. Heavyweights dragged, breadth came from small caps`}
+                ? `${indexSummary(last.hs300_ret, last.ew_ret, lang)}；上涨广度位于近一年 ${breadthRank} 分位。`
+                : `${indexSummary(last.hs300_ret, last.ew_ret, lang)}; breadth sits at the ${breadthPctile == null ? "—" : ord(breadthPctile)} percentile of the past year.`}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <span className={`pill border-transparent ${regime === "broad_up" || regime === "concentrated_up" ? "chip-up" : regime === "broad_down" ? "chip-down" : "chip-accent"}`}>
                 {regimeLabel(regime, lang)}
               </span>
-              <span className="pill">{zh ? `广度 ${breadthPctile} 分位` : `${ord(breadthPctile)} breadth pct`}</span>
+              <span className="pill">{zh ? `广度 ${breadthRank} 分位` : `${breadthPctile == null ? "—" : ord(breadthPctile)} breadth pct`}</span>
               <span className="pill">CSD {(last.csd * 100).toFixed(2)}pp</span>
               {topDrag && (
                 <span className="pill chip-copper border-transparent">
@@ -180,7 +186,7 @@ export default function Today() {
           <div className="grid grid-cols-3 items-center gap-0 self-center">
             {[
               { k: zh ? "上涨占比" : "Breadth", v: ratio(last.breadth, 0), s: `${num(last.n_adv)} / ${num(last.n_dec)}`, tone: "text" },
-              { k: zh ? "等权收益" : "Equal-weight", v: pct(last.ew_ret), s: `${t("metric.index")} ${pct(last.hs300_ret ?? last.cw_ret)}`, tone: last.ew_ret >= 0 ? "up" : "down" },
+              { k: zh ? "等权收益" : "Equal-weight", v: pct(last.ew_ret), s: `${t("metric.index")} ${pct(last.hs300_ret)}`, tone: last.ew_ret >= 0 ? "up" : "down" },
               { k: zh ? "成交额" : "Turnover", v: money(last.amount), s: `${zh ? "20D 均值" : "20D avg"} ${money(avg(last20.map((r) => r.amount)))}`, tone: "text" },
             ].map((s, i) => (
               <div key={s.k} className={`min-w-0 ${i ? "border-l border-[var(--border)] pl-4" : ""}`}>
@@ -253,24 +259,24 @@ export default function Today() {
               {[
                 {
                   n: "01",
-                  h: zh ? `沪深300 ${pct(last.hs300_ret ?? last.cw_ret)}，等权 ${pct(last.ew_ret)}` : `CSI 300 ${pct(last.hs300_ret ?? last.cw_ret)} vs EW ${pct(last.ew_ret)}`,
+                  h: zh ? `沪深300 ${pct(last.hs300_ret)}，等权 ${pct(last.ew_ret)}` : `CSI 300 ${pct(last.hs300_ret)} vs EW ${pct(last.ew_ret)}`,
                   p: zh
                     ? `Top10 波动占比 ${ratio(last.top10_share, 0)}${topDrag ? ` · ${topDrag.name} ${(topDrag.contrib * 100).toFixed(2)}pp` : ""}`
-                    : `CSI 300 ${pct(last.hs300_ret ?? last.cw_ret)} vs equal-weight ${pct(last.ew_ret)}`,
+                    : `CSI 300 ${pct(last.hs300_ret)} vs equal-weight ${pct(last.ew_ret)}`,
                 },
                 {
                   n: "02",
                   h: zh ? `${broadSectors} 个行业广度超过 60%` : `${broadSectors} sectors above 60% breadth`,
                   p: zh
-                    ? `${sectors[0]?.sw_l1 ?? "—"} ${ratio(sectors[0]?.breadth ?? 0, 0)} · ${sectors[1]?.sw_l1 ?? "—"} ${ratio(sectors[1]?.breadth ?? 0, 0)}`
+                    ? `${sectors[0]?.sw_l1 ?? "—"} ${ratio(sectors[0]?.breadth ?? null, 0)} · ${sectors[1]?.sw_l1 ?? "—"} ${ratio(sectors[1]?.breadth ?? null, 0)}`
                     : `${broadSectors} of 31 sectors have breadth above 60%`,
                 },
                 {
                   n: "03",
                   h: zh ? `涨停 ${num(last.limit_up_n)} 家，最高 ${last.max_streak ?? "—"} 板` : `${num(last.limit_up_n)} limit-ups, max streak ${last.max_streak ?? "—"}`,
                   p: zh
-                    ? `20 日均值 ${limitRatio.toFixed(1)}× · 连板 ${num(last.streak_n)} 家`
-                    : `${num(last.limit_up_n)} limit-ups (${limitRatio.toFixed(1)}× 20d avg), max streak ${last.max_streak ?? "—"}`,
+                    ? `20 日均值 ${(limitRatio == null ? "—" : limitRatio.toFixed(1))}× · 连板 ${num(last.streak_n)} 家`
+                    : `${num(last.limit_up_n)} limit-ups (${(limitRatio == null ? "—" : limitRatio.toFixed(1))}× 20d avg), max streak ${last.max_streak ?? "—"}`,
                 },
               ].map((x, i) => (
                 <div key={x.n} className={`grid grid-cols-[26px_1fr] gap-2 py-2 ${i ? "border-t border-[var(--border)]" : ""}`}>
@@ -325,7 +331,7 @@ export default function Today() {
                   </div>
                 );
               })}
-              {!contrib.length && <div className="py-8 text-center text-[12px] text-[var(--muted)]">{t("common.loading")}</div>}
+              {!contrib.length && <div className="py-8 text-center text-[12px] text-[var(--muted)]">{zh ? "暂无贡献数据" : "Contribution data unavailable"}</div>}
             </div>
             <div className="provline">
               <span>Top10 波动占比 <b>{ratio(last.top10_share, 0)}</b></span>
@@ -398,7 +404,7 @@ export default function Today() {
               <div className="provline">
                 <span>CSD <b>{(last.csd * 100).toFixed(2)}pp</b></span>
                 <span>IQR <b>{(last.iqr * 100).toFixed(2)}pp</b></span>
-                <span>{zh ? "偏度" : "skew"} <b>{last.skew.toFixed(2)}</b></span>
+                <span>{zh ? "偏度" : "skew"} <b>{num(last.skew, 2)}</b></span>
                 <span className="r">daily / daily_basic</span>
               </div>
             }

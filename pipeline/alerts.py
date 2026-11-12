@@ -1,7 +1,7 @@
 """更新失败告警。
 
-失败时写 `data/meta/alert.json`，成功时清除；API 与静态 payload 会把它带给前端，
-页面顶部立即显示失败信息，不必等“数据落后 7 天”的兜底提示。
+失败时写 `data/meta/alert.json`，完整发布成功后清除；API 和新导出的静态 payload
+包含告警。已经分发的离线HTML不能收到后续更新失败的告警。
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import settings
+from .io_utils import atomic_write_json
 
 
 def _path() -> Path:
@@ -32,6 +33,9 @@ def _friendly(message: str) -> str:
         return "数据源权限不足，本次更新未完成"
     if "quality" in text.lower() or "gate" in text.lower():
         return "数据质量校验未通过，本次更新已中止"
+    import re
+    text = re.sub(r"(?i)(token|api[_-]?key|password|secret)\s*[=:]\s*[^\s,;]+", r"\1=[redacted]", text)
+    text = re.sub(r"[A-Za-z]:[\\/][^\s]+", "[local path]", text)
     return text[:300]
 
 
@@ -43,7 +47,7 @@ def write(stage: str, message: str, log: str | None = None) -> dict:
         "message": _friendly(message),
         "log": log,
     }
-    _path().write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(_path(), payload)
     return payload
 
 

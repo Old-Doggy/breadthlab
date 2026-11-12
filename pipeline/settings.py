@@ -10,11 +10,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(ROOT / ".env")
+if os.getenv("BREADTHLAB_LOAD_ENV", "1") != "0":
+    load_dotenv(ROOT / ".env")
 
 # ---------------------------------------------------------------- 路径
 SOURCE_ROOT = Path(os.getenv("BREADTHLAB_SOURCE", str(ROOT / "data" / "snapshot")))
-DATA = ROOT / "data"
+DATA = Path(os.getenv("BREADTHLAB_DATA_DIR", str(ROOT / "data"))).resolve()
 RAW = DATA / "raw"
 MARTS = DATA / "marts"
 META = DATA / "meta"
@@ -41,8 +42,8 @@ INCLUDE_BSE = False
 RETURN_CLIP = (0.01, 0.99)  # 仅用于图表截尾，统计保留原值
 
 # 广度阈值
-BREADTH_STRONG = 0.60
-BREADTH_WEAK = 0.45
+BREADTH_STRONG = 0.50
+BREADTH_WEAK = 0.50
 
 # 集中度
 TOP_N_CONTRIB = 10

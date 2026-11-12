@@ -15,6 +15,7 @@ _LOCK_HINTS = (
     "Could not set lock",
     "Conflicting lock",
     "different configuration",
+    "File is already open in",
 )
 
 
@@ -27,10 +28,15 @@ def _default_timeout() -> float:
 
 def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(str(settings.LAKE), read_only=read_only)
-    con.execute("SET threads=16")
-    con.execute("SET memory_limit='12GB'")
-    con.execute("SET preserve_insertion_order=false")
-    con.execute("SET temp_directory='%s'" % (settings.DATA / "tmp").as_posix())
+    try:
+        con.execute("SET threads=4")
+        con.execute("SET memory_limit='4GB'")
+        con.execute("SET preserve_insertion_order=false")
+        directory = (settings.DATA / "tmp").as_posix().replace("'", "''")
+        con.execute(f"SET temp_directory='{directory}'")
+    except BaseException:
+        con.close()
+        raise
     return con
 
 

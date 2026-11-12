@@ -16,6 +16,8 @@ from pathlib import Path
 from . import settings
 from .db import session
 from .settings import BOOTSTRAP_START, SOURCE_ROOT
+from .locking import publish_lock
+from .io_utils import atomic_write_json
 
 START_COMPACT = BOOTSTRAP_START.replace("-", "")  # 20161201
 
@@ -36,9 +38,10 @@ DDL: dict[str, str] = {
     # ---------------------------------------------------------------- 股票静态信息
     "core_stock_meta": f"""
         CREATE OR REPLACE TABLE core_stock_meta AS
-        SELECT ts_code, symbol, name, area, industry,
-               market, exchange, list_status,
-               list_date, delist_date, is_hs
+        SELECT ts_code::VARCHAR AS ts_code, symbol::VARCHAR AS symbol, name::VARCHAR AS name,
+               area::VARCHAR AS area, industry::VARCHAR AS industry, market::VARCHAR AS market,
+               exchange::VARCHAR AS exchange, list_status::VARCHAR AS list_status,
+               list_date::VARCHAR AS list_date, delist_date::VARCHAR AS delist_date, is_hs::VARCHAR AS is_hs
         FROM read_parquet('{SRC}/stock_basic/*.parquet', union_by_name=true)
         QUALIFY row_number() OVER (PARTITION BY ts_code ORDER BY _fetched_at DESC) = 1
     """,
@@ -147,19 +150,31 @@ DDL: dict[str, str] = {
 }
 
 
-def run(only: list[str] | None = None) -> dict:
+def _run(only: list[str] | None = None) -> dict:
     report: dict[str, dict] = {}
+    selected = [(name, sql) for name, sql in DDL.items() if not only or any(o in name for o in only)]
+    # Validate all required source files before replacing any table.
+    import re
+    for name, sql in selected:
+        for match in re.findall(r"'([^']+\.parquet)'", sql):
+            relative = Path(match).relative_to(SOURCE_ROOT)
+            if not list(SOURCE_ROOT.glob(str(relative))):
+                raise FileNotFoundError(f"missing snapshot input: {relative}")
     with session(wait=True, timeout_sec=600) as con:
-        for name, sql in DDL.items():
-            if only and not any(o in name for o in only):
-                continue
-            t0 = time.time()
-            print(f"[bootstrap] {name} ...", flush=True)
-            con.execute(sql)
-            rows = con.execute(f"SELECT count(*) FROM {name}").fetchone()[0]
-            sec = round(time.time() - t0, 1)
-            report[name] = {"rows": int(rows), "sec": sec}
-            print(f"[bootstrap] {name}: {rows:,} rows in {sec}s", flush=True)
+        con.execute("BEGIN TRANSACTION")
+        try:
+            for name, sql in selected:
+                t0 = time.time()
+                print(f"[bootstrap] {name} ...", flush=True)
+                con.execute(sql)
+                rows = con.execute(f"SELECT count(*) FROM {name}").fetchone()[0]
+                sec = round(time.time() - t0, 1)
+                report[name] = {"rows": int(rows), "sec": sec}
+                print(f"[bootstrap] {name}: {rows:,} rows in {sec}s", flush=True)
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
         con.execute("CHECKPOINT")
 
     report["_meta"] = {
@@ -170,9 +185,14 @@ def run(only: list[str] | None = None) -> dict:
         "lake_mb": round(settings.LAKE.stat().st_size / 1e6, 1) if settings.LAKE.exists() else None,
     }
     out = settings.META / "bootstrap.json"
-    out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(out, report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return report
+
+
+def run(only: list[str] | None = None) -> dict:
+    with publish_lock():
+        return _run(only)
 
 
 if __name__ == "__main__":

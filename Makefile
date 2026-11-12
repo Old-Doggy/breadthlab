@@ -5,7 +5,7 @@ bootstrap:
 	$(PY) -m pipeline.bootstrap
 
 update:
-	$(PY) -m pipeline.update_daily
+	$(PY) -m pipeline.release
 
 marts:
 	$(PY) -m pipeline.build_marts
@@ -28,4 +28,4 @@ lint:
 dev:
 	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
 
-all: update marts status export briefing
+all: update briefing

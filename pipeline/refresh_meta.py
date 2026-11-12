@@ -8,6 +8,8 @@ import pandas as pd
 from . import settings
 from .db import session
 from .update_daily import tushare_pro
+from .locking import publish_lock
+from .io_utils import atomic_write_json
 
 FIELDS = "ts_code,symbol,name,area,industry,market,exchange,list_status,list_date,delist_date,is_hs"
 COLS = FIELDS.split(",")
@@ -42,18 +44,20 @@ def _repair_null_type(con) -> None:
     con.execute("ALTER TABLE core_stock_meta_new RENAME TO core_stock_meta")
 
 
-def run(pro=None) -> dict:
+def _run(pro=None) -> dict:
     pro = pro or tushare_pro()
     frames = []
     for status in ("L", "D", "P"):
         try:
             df = pro.stock_basic(exchange="", list_status=status, fields=FIELDS)
+            if status == "L" and (df is None or df.empty):
+                raise RuntimeError("listed stock metadata is empty")
             if df is not None and not df.empty:
                 frames.append(df[[c for c in COLS if c in df.columns]])
-        except Exception as e:  # 权限/限频时跳过
-            print(f"[meta] status={status} failed: {e}")
+        except Exception as e:
+            raise RuntimeError(f"metadata {status} fetch failed; previous table preserved") from e
     if not frames:
-        return {"inserted": 0, "total": 0}
+        raise RuntimeError("metadata response is empty; previous table preserved")
 
     df = pd.concat(frames, ignore_index=True).drop_duplicates("ts_code")
     for c in COLS:
@@ -62,10 +66,10 @@ def run(pro=None) -> dict:
         df[c] = df[c].astype("string")
 
     with session() as con:
-        con.execute("DROP TABLE IF EXISTS core_stock_meta")
+        con.execute("BEGIN TRANSACTION")
         con.execute(
             """
-            CREATE TABLE core_stock_meta (
+            CREATE OR REPLACE TABLE core_stock_meta (
                 ts_code VARCHAR, symbol VARCHAR, name VARCHAR, area VARCHAR, industry VARCHAR,
                 market VARCHAR, exchange VARCHAR, list_status VARCHAR, list_date VARCHAR,
                 delist_date VARCHAR, is_hs VARCHAR
@@ -82,11 +86,17 @@ def run(pro=None) -> dict:
         )
         con.unregister("tmp_meta")
         total = con.execute("SELECT count(*) FROM core_stock_meta").fetchall()[0][0]
+        con.execute("COMMIT")
         con.execute("CHECKPOINT")
 
     out = {"inserted": int(total), "total": int(total)}
-    (settings.META / "meta_refresh.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(settings.META / "meta_refresh.json", out)
     return out
+
+
+def run(pro=None) -> dict:
+    with publish_lock():
+        return _run(pro)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,8 @@ RESULTS: list[dict] = []
 
 
 def check(item: str, expected, actual, tol=0.0, note: str = "", kind="num") -> None:
+    expected = None if pd.isna(expected) else expected
+    actual = None if pd.isna(actual) else actual
     if kind == "num":
         if expected is None or actual is None:
             ok = bool(expected == actual)
@@ -60,8 +62,8 @@ def audit_market(con, day: str) -> None:
                quantile_cont(ret, 0.25) q25,
                quantile_cont(ret, 0.75) q75,
                sum(amount) * 1000 amt,
-               count(*) FILTER (WHERE close >= up_limit * 0.999) lim_up,
-               count(*) FILTER (WHERE close <= down_limit * 1.001) lim_dn
+               CASE WHEN count(is_limit_up)>0 THEN count(*) FILTER (WHERE is_limit_up) END lim_up,
+               CASE WHEN count(is_limit_down)>0 THEN count(*) FILTER (WHERE is_limit_down) END lim_dn
         FROM feat_stock WHERE trade_date = ? AND NOT is_new_stock
         """,
         [day],
@@ -70,7 +72,7 @@ def audit_market(con, day: str) -> None:
     check("样本数 n_valid", raw.n, m.n_valid, 0)
     check("上涨家数", raw.adv, m.n_adv, 0)
     check("下跌家数", raw.dec, m.n_dec, 0)
-    check("广度 = 涨/(涨+跌)", raw.adv / (raw.adv + raw.dec), m.breadth, 1e-12)
+    check("广度 = 涨/(涨+跌)", raw.adv / (raw.adv + raw.dec) if raw.adv+raw.dec else None, m.breadth, 1e-12)
     check("等权收益", raw.ew, m.ew_ret, 1e-12)
     check("中位数收益", raw.med, m.med_ret, 1e-12)
     check("横截面标准差", raw.csd, m.csd, 1e-9)
@@ -82,19 +84,20 @@ def audit_market(con, day: str) -> None:
     # 市值加权：前一日流通市值
     cap = con.execute(
         """
-        WITH f AS (
-            SELECT ts_code, trade_date, ret,
-                   lag(circ_mv) OVER (PARTITION BY ts_code ORDER BY trade_date) AS prev_cap
-            FROM feat_stock
-            WHERE trade_date <= ? AND NOT is_new_stock
+        WITH previous AS (
+            SELECT max(trade_date) AS d FROM core_trade_cal WHERE is_open=1 AND trade_date<?
+        ), f AS (
+            SELECT f.ts_code, f.trade_date, f.ret, c.circ_mv AS prev_cap
+            FROM feat_stock f CROSS JOIN previous p
+            LEFT JOIN core_stock_day c ON c.ts_code=f.ts_code AND c.trade_date=p.d
+            WHERE f.trade_date = ? AND NOT f.is_new_stock
         ),
-        d AS (SELECT * FROM f WHERE trade_date = ?),
-        w AS (SELECT *, prev_cap / sum(prev_cap) OVER () AS wt FROM d WHERE prev_cap > 0),
+        w AS (SELECT *, prev_cap / sum(prev_cap) OVER () AS wt FROM f WHERE prev_cap > 0 AND isfinite(prev_cap)),
         r AS (SELECT *, row_number() OVER (ORDER BY prev_cap DESC) rn FROM w)
         SELECT sum(wt * ret) cw,
                sum(wt * wt) * 10000 hhi,
                sum(wt * ret) FILTER (WHERE rn <= 10) top10_pp,
-               sum(abs(wt * ret)) FILTER (WHERE rn <= 10) / sum(abs(wt * ret)) top10_share
+               sum(abs(wt * ret)) FILTER (WHERE rn <= 10) / nullif(sum(abs(wt * ret)),0) top10_share
         FROM r
         """,
         [day, day],
@@ -155,9 +158,11 @@ def audit_sectors(con, day: str) -> None:
 
     m_amt = con.execute("SELECT amount FROM mart_market_day WHERE trade_date = ?", [day]).fetchall()[0][0]
     s_amt = con.execute(
-        "SELECT sum(amount) * 1000 FROM feat_stock WHERE trade_date = ? AND NOT is_new_stock", [day]
+        "SELECT sum(amount) FROM mart_sector_day WHERE trade_date = ?", [day]
     ).fetchall()[0][0]
-    check("行业成交额合计 = 全市场", m_amt, s_amt, m_amt * 0.001)
+    unmapped_amount = con.execute("""SELECT coalesce(sum(amount),0)*1000 FROM feat_stock
+        WHERE trade_date=? AND NOT is_new_stock AND sw_l1='未分类'""", [day]).fetchone()[0]
+    check("行业成交额合计 + 未分类 = 全市场", m_amt, (s_amt or 0) + unmapped_amount, m_amt * 0.001)
 
 
 def audit_stocks_vs_akshare(con, day: str, n_samples: int) -> None:
@@ -215,7 +220,7 @@ def audit_stocks_vs_akshare(con, day: str, n_samples: int) -> None:
                     checked_ret += 1
                     checked_sina += 1
                     ok_price += abs(close - r.close) < 0.011
-                    ok_ret += abs(pct - r.ret * 100) < 0.2
+                    ok_ret += abs(pct - r.ret * 100) < 0.05
                     ok_amt += abs(amt - r.amount * 1000) / max(1.0, r.amount * 1000) < 0.01
             except Exception:
                 pass
@@ -322,12 +327,12 @@ def audit_limit_method(con, day: str = "2026-05-22") -> None:
     print(f"  [info] {day}: 官方最高连板={off_streak} 价格口径={our_streak}")
 
     mrow = con.execute(
-        "SELECT limit_up_ex_st_n, limit_up_st_n, broken_rate FROM mart_market_day WHERE trade_date = ?", [day]
+        "SELECT limit_up_non5pct_n, limit_up_5pct_n, broken_rate FROM mart_market_day WHERE trade_date = ?", [day]
     ).fetchdf()
     if len(mrow):
         r = mrow.iloc[0]
-        check("ST 涨停家数", st_n, r.limit_up_st_n, 0, note=f"{day}")
-        check("非ST涨停 = 官方", official, r.limit_up_ex_st_n, max(2, round(official * 0.03)))
+        check("5%限制涨停家数（非ST身份）", st_n, r.limit_up_5pct_n, 0, note=f"{day}")
+        check("非5%涨停与官方差异", official, r.limit_up_non5pct_n, max(2, round(official * 0.03)))
         broken = con.execute(
             "SELECT count(*) FROM core_limit_event WHERE trade_date = ? AND is_broken", [day]
         ).fetchall()[0][0]
@@ -350,7 +355,15 @@ def audit_integrity(con, day: str) -> None:
         """,
         [day],
     ).fetchdf().iloc[0]
-    check("feat 覆盖 core 行数", int(fv.n), int(fv.n), 0)
+    missing = con.execute("""WITH expected AS (
+        SELECT ts_code, trade_date FROM core_stock_day
+        WHERE trade_date=? AND (ts_code LIKE '%.SH' OR ts_code LIKE '%.SZ')
+          AND close>0 AND adj_factor>0 AND pct_chg>-100 AND adj_close>0
+          AND isfinite(close) AND isfinite(adj_factor) AND isfinite(pct_chg) AND isfinite(adj_close)
+    ), actual AS (SELECT ts_code,trade_date FROM feat_stock WHERE trade_date=?)
+    SELECT count(*) FROM expected e FULL OUTER JOIN actual a USING(ts_code,trade_date)
+    WHERE e.ts_code IS NULL OR a.ts_code IS NULL""", [day, day]).fetchone()[0]
+    check("feat/core 有效键集合一致", 0, int(missing), 0)
     check("feat 收盘价 = core", 0, int(fv.bad_close), 0)
     check("feat 收益 = pct_chg/100", 0, int(fv.bad_ret), 0)
     check("feat 成交额 = core（千元）", 0, int(fv.bad_amt), 0)
@@ -371,10 +384,12 @@ def audit_integrity(con, day: str) -> None:
             GROUP BY sw_l1
         )
         SELECT count(*) bad
-        FROM s JOIN mart_sector_day m USING (sw_l1)
-        WHERE m.trade_date = ?
-          AND (s.n <> m.n OR abs(s.ew - m.ew_ret) > 1e-9
-               OR abs(s.breadth - m.breadth) > 1e-12 OR abs(s.iqr - m.iqr) > 1e-9)
+        FROM s FULL OUTER JOIN (SELECT * FROM mart_sector_day WHERE trade_date=?) m USING (sw_l1)
+        WHERE s.sw_l1 IS NULL OR m.sw_l1 IS NULL OR s.n <> m.n
+          OR abs(s.ew - m.ew_ret) > 1e-9
+          OR s.breadth IS DISTINCT FROM m.breadth AND
+             (s.breadth IS NULL OR m.breadth IS NULL OR abs(s.breadth - m.breadth) > 1e-12)
+          OR abs(s.iqr - m.iqr) > 1e-9
         """,
         [day, day],
     ).fetchall()[0][0]
@@ -383,13 +398,21 @@ def audit_integrity(con, day: str) -> None:
     # 3) 最新个股快照
     snap = con.execute(
         """
+        WITH expected AS (
+            SELECT * FROM feat_stock WHERE trade_date <= ?
+            QUALIFY row_number() OVER (PARTITION BY ts_code ORDER BY trade_date DESC)=1
+        )
         SELECT count(*) bad
-        FROM mart_stock_latest l JOIN feat_stock f USING (ts_code)
-        WHERE f.trade_date = ?
-          AND (abs(l.close - f.close) > 0.001 OR abs(l.ret - f.ret) > 1e-9
-               OR abs(l.circ_mv - f.circ_mv) > 0.01 OR l.sw_l1 IS DISTINCT FROM f.sw_l1)
+        FROM mart_stock_latest l FULL OUTER JOIN expected f USING (ts_code)
+        WHERE l.ts_code IS NULL OR f.ts_code IS NULL
+           OR l.quote_date IS DISTINCT FROM f.trade_date
+           OR l.trade_date IS DISTINCT FROM ?::DATE
+           OR l.is_stale IS DISTINCT FROM (f.trade_date < ?::DATE)
+           OR l.close IS DISTINCT FROM f.close OR l.circ_mv IS DISTINCT FROM f.circ_mv
+           OR l.ret IS DISTINCT FROM (CASE WHEN f.trade_date = ?::DATE THEN f.ret ELSE 0 END)
+           OR l.sw_l1 IS DISTINCT FROM f.sw_l1
         """,
-        [day],
+        [day, day, day, day],
     ).fetchall()[0][0]
     check("个股最新快照全部一致", 0, int(snap), 0)
 
@@ -400,12 +423,17 @@ def audit_integrity(con, day: str) -> None:
             SELECT sw_l1, date_trunc('month', trade_date)::DATE m,
                    exp(sum(ln(1 + ew_ret))) - 1 cum
             FROM mart_sector_day
-            WHERE trade_date >= (SELECT max(trade_date) - INTERVAL 400 DAY FROM mart_sector_day)
+            WHERE trade_date >= (SELECT date_trunc('month', max(trade_date) - INTERVAL 400 DAY) FROM mart_sector_day)
             GROUP BY 1, 2
         )
-        SELECT count(*) bad FROM d JOIN mart_sector_month sm
+        SELECT count(*) bad FROM d FULL OUTER JOIN (
+            SELECT * FROM mart_sector_month WHERE month >=
+            (SELECT date_trunc('month', max(trade_date) - INTERVAL 400 DAY) FROM mart_sector_day)
+        ) sm
           ON d.sw_l1 = sm.sw_l1 AND d.m = sm.month
-        WHERE abs(d.cum - sm.ew_ret_cum) > 1e-9
+        WHERE d.sw_l1 IS NULL OR sm.sw_l1 IS NULL
+           OR (d.cum IS DISTINCT FROM sm.ew_ret_cum AND
+               (d.cum IS NULL OR sm.ew_ret_cum IS NULL OR abs(d.cum - sm.ew_ret_cum) > 1e-9))
         """,
     ).fetchall()[0][0]
     check("行业月度累计 = 日度复利", 0, int(mon), 0)
@@ -421,18 +449,19 @@ def audit_payload(con, day: str) -> None:
     m = con.execute("SELECT * FROM mart_market_day WHERE trade_date = ?", [day]).fetchdf().iloc[0]
     check("payload 最新日期", m.trade_date.strftime("%Y-%m-%d"), str(last["trade_date"])[:10], 0, kind="str")
     for k in ["breadth", "ew_ret", "cw_ret", "top10_share", "amount", "limit_up_n"]:
-        check(f"payload {k}", m[k], last[k], 1e-3)
+        tol = 0.01 if k == "amount" else 1e-3
+        check(f"payload {k}", m[k], last[k], tol)
     check("payload 个股数", int(m.n_valid), len(d["stocks"]), 0)
     print(f"  [info] payload stocks={len(d['stocks'])}, sectors={len(d['sectors'])}, rotation={len(d.get('rotation', []))}")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--date", default="2026-11-10")
+    ap.add_argument("--date", help="audit date YYYY-MM-DD (default: latest mart date)")
     ap.add_argument("--samples", type=int, default=20)
     args = ap.parse_args()
-    day = args.date
     con = duckdb.connect(str(ROOT / "data" / "lake.duckdb"), read_only=True)
+    day = args.date or str(con.execute("SELECT max(trade_date) FROM mart_market_day").fetchall()[0][0])
 
     print(f"== 审计交易日 {day} ==")
     print("[1] 市场指标")
@@ -444,7 +473,10 @@ def main() -> None:
     print("[4] 指数 vs akshare")
     audit_index_vs_akshare(con, day)
     print("[5] 涨停口径校验（历史官方数据）")
-    audit_limit_method(con, "2026-05-22")
+    if con.execute("SELECT count(*) FROM core_limit_event WHERE trade_date=?", [day]).fetchall()[0][0]:
+        audit_limit_method(con, day)
+    else:
+        skip("涨跌停事件口径", "指定日期无事件记录，不能用历史另一天冒充验证")
     print("[6] 批量一致性")
     audit_integrity(con, day)
     print("[7] 静态 payload 一致性")

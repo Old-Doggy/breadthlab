@@ -1,36 +1,29 @@
 """API 契约测试（Flask test client，不依赖网络）。"""
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from backend.main import app
 from pipeline import settings
 
-pytestmark = pytest.mark.skipif(not settings.LAKE.exists(), reason="lake not built")
-
-
 @pytest.fixture()
-def client():
-    app.config.update(TESTING=True)
-    with app.test_client() as c:
-        yield c
+def client(db_client):
+    return db_client
 
 
 def test_meta(client):
     r = client.get("/api/meta")
     assert r.status_code == 200
     data = r.get_json()
-    assert data["last_trade_date"] >= "2026-11-10"
-    assert data["n_stocks"] > 4000
+    assert data["last_trade_date"] == "2026-06-11"
+    assert data["n_stocks"] == 6
 
 
 def test_market_series(client):
     r = client.get("/api/market/series")
     assert r.status_code == 200
     rows = r.get_json()
-    assert len(rows) > 2000
+    assert len(rows) == 30
     assert "breadth" in rows[-1]
 
 
@@ -38,16 +31,16 @@ def test_market_day_detail(client):
     r = client.get("/api/market/day/2026-05-22")
     assert r.status_code == 200
     d = r.get_json()
-    assert len(d["contributors"]) > 10
-    assert len(d["sectors"]) >= 28
+    assert len(d["contributors"]) == 6
+    assert len(d["sectors"]) == 3
 
 
 def test_distribution(client):
     r = client.get("/api/distribution/2026-05-22")
     assert r.status_code == 200
     d = r.get_json()
-    assert len(d["bins"]) > 30
-    assert d["stats"]["n"] > 4000
+    assert sum(b["n"] for b in d["bins"]) == 6
+    assert d["stats"]["n"] == 6
 
 
 def test_stocks(client):
@@ -61,7 +54,7 @@ def test_stocks(client):
 def test_sectors(client):
     r = client.get("/api/sectors?date=2026-05-22")
     assert r.status_code == 200
-    assert len(r.get_json()) >= 28
+    assert len(r.get_json()) == 3
 
 
 def test_watchlist_roundtrip(client):
@@ -71,13 +64,13 @@ def test_watchlist_roundtrip(client):
     assert any(r["ts_code"] == "000001.SZ" for r in rows)
     assert client.delete("/api/watchlist/000001.SZ").status_code == 200
 
-def test_connection_released_after_request(monkeypatch):
+def test_connection_released_after_request(monkeypatch, tmp_path):
     """请求结束后必须释放 DuckDB 锁，否则 17:35 的更新任务打不开库。"""
     import duckdb as dd
 
     import backend.main as m
 
-    db = Path(__file__).resolve().parents[1] / "data" / "tmp_lock_test.duckdb"
+    db = tmp_path / "tmp_lock_test.duckdb"
     db.unlink(missing_ok=True)
     dd.connect(str(db)).close()
     monkeypatch.setattr(m, "LAKE", db)
@@ -88,7 +81,7 @@ def test_connection_released_after_request(monkeypatch):
     dd.connect(str(db)).close()
     db.unlink(missing_ok=True)
 
-def test_meta_includes_alert():
+def test_meta_includes_alert(client):
     """失败告警应透传到 /api/meta，成功更新后清除。"""
     import json
 
@@ -99,7 +92,7 @@ def test_meta_includes_alert():
             json.dumps({"time": "2026-11-11T16:50:00+08:00", "stage": "export", "message": "simulated"}),
             encoding="utf-8",
         )
-        r = app.test_client().get("/api/meta")
+        r = client.get("/api/meta")
         assert r.status_code == 200
         assert r.get_json()["alert"]["stage"] == "export"
     finally:

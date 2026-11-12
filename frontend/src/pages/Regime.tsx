@@ -8,6 +8,7 @@ import { paletteFor } from "../lib/theme";
 import { money, pct, ratio, shortDate, trendClass } from "../lib/format";
 import { regimeScatter, regimeColor } from "../lib/charts2";
 import { regimeLabel, regimeOf, type RegimeKey } from "../lib/regime";
+import { DataState } from "../components/DataState";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
 import { PageHead } from "../components/PageHead";
@@ -20,7 +21,7 @@ const RANGES = [
 ] as const;
 type RangeKey = (typeof RANGES)[number]["value"];
 
-const KEYS: RegimeKey[] = ["broad_up", "concentrated_up", "mixed", "broad_down"];
+const KEYS: RegimeKey[] = ["broad_up", "concentrated_up", "mixed", "broad_down", "unknown"];
 
 function std(xs: number[]) {
   const m = xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -43,7 +44,7 @@ export default function Regime() {
   };
   const [sel, setSel] = useState<string | null>(null);
 
-  const { data } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
+  const { data, isError, isPending } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
   const all = data ?? [];
   const rows = useMemo(() => all.slice(-(RANGES.find((r) => r.value === range)?.n ?? 750)), [all, range]);
 
@@ -58,7 +59,7 @@ export default function Regime() {
   }, [rows]);
 
   const regimeStats = useMemo(() => {
-    const runs: Record<string, number[]> = { broad_up: [], concentrated_up: [], mixed: [], broad_down: [] };
+    const runs: Record<string, number[]> = { broad_up: [], concentrated_up: [], mixed: [], broad_down: [], unknown: [] };
     let cur: string | null = null;
     let len = 0;
     rows.forEach((r) => {
@@ -99,20 +100,22 @@ export default function Regime() {
   }, [rows]);
 
   const similar = useMemo(() => {
-    if (!selRow || rows.length < 30) return [] as { r: MarketDay; d: number }[];
-    const ew = std(rows.map((r) => r.ew_ret));
-    const br = std(rows.map((r) => r.breadth));
-    const cs = std(rows.map((r) => r.csd));
-    const tp = std(rows.map((r) => r.top10_share || 0));
+    const complete = (r: MarketDay) => [r.ew_ret, r.breadth, r.csd, r.top10_share].every((v) => v != null && Number.isFinite(v));
+    const comparable = rows.filter(complete);
+    if (!selRow || !complete(selRow) || comparable.length < 30) return [] as { r: MarketDay; d: number }[];
+    const ew = std(comparable.map((r) => r.ew_ret));
+    const br = std(comparable.map((r) => r.breadth));
+    const cs = std(comparable.map((r) => r.csd));
+    const tp = std(comparable.map((r) => r.top10_share));
     const z = (v: number, s: { m: number; v: number }) => (v - s.m) / s.v;
-    return rows
+    return comparable
       .filter((r) => r.trade_date !== selRow.trade_date)
       .map((r) => {
         const d = Math.sqrt(
           (z(r.ew_ret, ew) - z(selRow.ew_ret, ew)) ** 2 +
             (z(r.breadth, br) - z(selRow.breadth, br)) ** 2 +
             (z(r.csd, cs) - z(selRow.csd, cs)) ** 2 +
-            (z(r.top10_share || 0, tp) - z(selRow.top10_share || 0, tp)) ** 2,
+            (z(r.top10_share, tp) - z(selRow.top10_share, tp)) ** 2,
         );
         return { r, d };
       })
@@ -120,7 +123,7 @@ export default function Regime() {
       .slice(0, 7);
   }, [rows, selRow]);
 
-  if (!rows.length) return <div className="skeleton h-[560px] w-full" />;
+  if (!rows.length) return <DataState error={isError} loading={isPending} />;
 
   const total = rows.length;
 

@@ -5,17 +5,21 @@ import { palettes } from "../lib/theme";
 import { money, num, pct, ratio, weekday } from "../lib/format";
 import { regimeLabel, regimeOf, verdict } from "../lib/regime";
 import { distributionChart, returnBreadth } from "../lib/charts";
+import { DataState } from "../components/DataState";
+import { percentile } from "../lib/viewMetrics";
 import EChart from "../components/EChart";
 
 /** A4 每日体检简报：?print=1#/briefing 由无头浏览器打印为 PDF。 */
 export default function Briefing() {
   const { i18n } = useTranslation();
   const lang = i18n.language;
+  const zh = lang === "zh";
+  const L = (cn: string, en: string) => zh ? cn : en;
   const p = palettes.light;
 
-  const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
+  const { data: meta, isError: metaError } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const d = meta?.last_trade_date;
-  const { data: series } = useQuery({
+  const { data: series, isError: seriesError, isPending: seriesPending } = useQuery({
     queryKey: ["market-all"],
     queryFn: () => api.marketSeries(),
   });
@@ -32,7 +36,7 @@ export default function Briefing() {
 
   const rows = series ?? [];
   const last = rows[rows.length - 1];
-  if (!last) return <div className="skeleton h-[900px] w-full" />;
+  if (!last) return <DataState error={metaError || seriesError} loading={seriesPending && !seriesError} />;
 
   const recent = rows.slice(-60);
   const sectors = detail?.sectors ?? [];
@@ -41,42 +45,44 @@ export default function Briefing() {
   const bottom = byBreadth.slice(-3).reverse();
   const contrib = (detail?.contributors ?? []).slice(0, 3);
   const regime = regimeOf(last);
-  const zhaban = last.broken_n != null ? last.broken_n / Math.max(1, (last.limit_up_n || 0) + last.broken_n) : null;
+  const zhaban = last.broken_rate ?? null;
   const prev20 = rows.slice(-21, -1);
-  const breadthDelta = (last.breadth - prev20.reduce((a, r) => a + r.breadth, 0) / Math.max(1, prev20.length)) * 100;
+  const comparable = prev20.filter((r) => r.breadth != null && Number.isFinite(r.breadth));
+  const breadthDelta = last.breadth == null || !comparable.length ? null : (last.breadth - comparable.reduce((a, r) => a + r.breadth, 0) / comparable.length) * 100;
   const yearB = rows.slice(-250).filter((r) => r.breadth <= last.breadth).length;
-  const breadthPctile = Math.round((yearB / Math.max(1, rows.slice(-250).length)) * 100);
+  const breadthPctile = percentile(rows.slice(-250).map((r) => r.breadth), last.breadth);
 
   return (
     <div className="briefing mx-auto max-w-[1040px] rounded-xl border border-[var(--border)] bg-white p-4 text-[#101828] shadow-sm sm:p-8">
       <div className="flex items-start justify-between border-b border-[#e4e7ec] pb-4">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#667085]">BreadthLab</div>
-          <h1 className="serif mt-1 text-[27px] font-bold tracking-tight">A股市场体检简报</h1>
+          <h1 className="serif mt-1 text-[27px] font-bold tracking-tight">{L("A股市场体检简报", "A-share daily market report")}</h1>
           <div className="mt-1 text-[12px] text-[#667085]">
-            {last.trade_date} · {weekday(last.trade_date)} · 数据源 Tushare Pro
+            {last.trade_date} · {weekday(last.trade_date, lang)} · {L("数据源", "Source")} {meta?.source || L("未知", "unknown")}
           </div>
         </div>
         <div className="text-right">
           <div className="rounded-full bg-[#f2f4f7] px-3 py-1 text-[12px] font-medium text-[#344054]">
-            {regimeLabel(regime, "zh")}
+            {regimeLabel(regime, lang)}
           </div>
-          <div className="mt-2 text-[11px] text-[#98a2b3]">{meta?.n_stocks} 只股票 · {meta?.n_days} 个交易日</div>
+          <div className="mt-2 text-[11px] text-[#98a2b3]">{meta?.n_stocks} {L("只股票", "stocks")} · {meta?.n_days} {L("个交易日", "sessions")}</div>
         </div>
       </div>
 
+      {meta?.alert && <div role="alert" className="mt-3 rounded border border-amber-500 p-2 text-sm">{L("更新失败", "Update failed")}: {meta.alert.message}</div>}
       <p className="mt-5 max-w-[62ch] text-[16px] font-semibold leading-[1.6] tracking-tight">
-        {verdict(last, "zh").replace(/。$/, "")}
+        {verdict(last, lang).replace(/。$/, "")}
       </p>
 
       <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
         {[
-          { k: "等权收益", v: pct(last.ew_ret), tone: last.ew_ret >= 0 ? "#d92d20" : "#067647" },
-          { k: "上涨占比", v: ratio(last.breadth, 0), tone: "#101828" },
-          { k: "涨停 / 跌停", v: `${last.limit_up_n} / ${last.limit_down_n}`, tone: "#101828" },
-          { k: "成交额", v: money(last.amount), tone: "#101828" },
-          { k: "分化度", v: `${(last.csd * 100).toFixed(2)}pp`, tone: "#101828" },
-          { k: "Top10 波动占比", v: ratio(last.top10_share, 0), tone: "#101828" },
+          { k: L("等权收益", "EW return"), v: pct(last.ew_ret), tone: last.ew_ret >= 0 ? "#d92d20" : "#067647" },
+          { k: L("上涨占比", "Breadth"), v: ratio(last.breadth, 0), tone: "#101828" },
+          { k: L("涨停 / 跌停", "Limit-up / down"), v: `${num(last.limit_up_n)} / ${num(last.limit_down_n)}`, tone: "#101828" },
+          { k: L("成交额", "Turnover"), v: money(last.amount), tone: "#101828" },
+          { k: L("分化度", "Dispersion"), v: `${(last.csd * 100).toFixed(2)}pp`, tone: "#101828" },
+          { k: L("Top10 波动占比", "Top10 absolute share"), v: ratio(last.top10_share, 0), tone: "#101828" },
         ].map((s) => (
           <div key={s.k} className="rounded-lg border border-[#e4e7ec] bg-[#fafbfc] px-2.5 py-2">
             <div className="text-[10.5px] uppercase tracking-wider text-[#98a2b3]">{s.k}</div>
@@ -89,24 +95,24 @@ export default function Briefing() {
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-[#e4e7ec] p-3">
-          <div className="text-[12px] font-semibold text-[#344054]">近 60 日：收益 × 广度</div>
-          <div className="mt-1 text-[11px] text-[#98a2b3]">柱：等权收益 · 线：沪深300 · 下：上涨占比</div>
+          <div className="text-[12px] font-semibold text-[#344054]">{L("近 60 日：收益 × 广度", "Last 60 sessions: return × breadth")}</div>
+          <div className="mt-1 text-[11px] text-[#98a2b3]">{L("柱：等权收益 · 线：沪深300 · 下：上涨占比", "Bars: EW return · line: CSI 300 · lower: breadth")}</div>
           <div className="mt-2 h-[260px]">
-            <EChart option={{ ...returnBreadth(p, recent, "zh"), animation: false }} />
+            <EChart option={{ ...returnBreadth(p, recent, lang), animation: false }} />
           </div>
         </div>
         <div className="rounded-lg border border-[#e4e7ec] p-3">
-          <div className="text-[12px] font-semibold text-[#344054]">当日个股收益分布</div>
-          <div className="mt-1 text-[11px] text-[#98a2b3]">截尾 ±11%，虚线为中位数</div>
+          <div className="text-[12px] font-semibold text-[#344054]">{L("当日个股收益分布", "Daily stock return distribution")}</div>
+          <div className="mt-1 text-[11px] text-[#98a2b3]">{L("端点箱汇总区间外收益，虚线为中位数", "Tail bins include outliers; dashed line: median")}</div>
           <div className="mt-2 h-[260px]">
-            {dist?.bins?.length ? <EChart option={{ ...distributionChart(p, dist.bins, dist.stats, "zh"), animation: false }} /> : null}
+            {dist?.bins?.length ? <EChart option={{ ...distributionChart(p, dist.bins, dist.stats, lang), animation: false }} /> : null}
           </div>
         </div>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-[#e4e7ec] p-3">
-          <div className="text-[12px] font-semibold text-[#344054]">最广泛参与</div>
+          <div className="text-[12px] font-semibold text-[#344054]">{L("最广泛参与", "Broadest participation")}</div>
           <div className="mt-2 space-y-1.5">
             {top.map((s) => (
               <div key={s.sw_l1} className="flex items-center justify-between text-[11.5px]">
@@ -119,7 +125,7 @@ export default function Briefing() {
           </div>
         </div>
         <div className="rounded-lg border border-[#e4e7ec] p-3">
-          <div className="text-[12px] font-semibold text-[#344054]">最弱参与</div>
+          <div className="text-[12px] font-semibold text-[#344054]">{L("最弱参与", "Weakest participation")}</div>
           <div className="mt-2 space-y-1.5">
             {bottom.map((s) => (
               <div key={s.sw_l1} className="flex items-center justify-between text-[11.5px]">
@@ -132,7 +138,7 @@ export default function Briefing() {
           </div>
         </div>
         <div className="rounded-lg border border-[#e4e7ec] p-3">
-          <div className="text-[12px] font-semibold text-[#344054]">最大贡献个股</div>
+          <div className="text-[12px] font-semibold text-[#344054]">{L("最大贡献个股", "Largest absolute contributors")}</div>
           <div className="mt-2 space-y-1.5">
             {contrib.map((c) => (
               <div key={c.ts_code} className="flex items-center justify-between text-[11.5px]">
@@ -147,17 +153,17 @@ export default function Briefing() {
       </div>
 
       <div className="mt-4 rounded-lg border border-[#e4e7ec] bg-[#fafbfc] p-3">
-        <div className="text-[12px] font-semibold text-[#344054]">今日三条</div>
+        <div className="text-[12px] font-semibold text-[#344054]">{L("今日三条", "Three observations")}</div>
         <ul className="mt-2 space-y-1.5 text-[11.5px] leading-relaxed text-[#475467]">
           <li>
-            ① 广度 {ratio(last.breadth, 0)}，较 20 日均值 {(breadthDelta >= 0 ? "+" : "") + breadthDelta.toFixed(1)}pp，处于近一年 {breadthPctile} 分位。
+            ① {L("广度", "Breadth")} {ratio(last.breadth, 0)}，{L("较20日均值", "vs 20-session mean")} {breadthDelta == null ? "—" : (breadthDelta >= 0 ? "+" : "") + breadthDelta.toFixed(1)}pp，{L("近一年分位", "past-year percentile")} {breadthPctile ?? "—"}。
           </li>
           <li>
-            ② 最强参与：{top[0]?.sw_l1} {ratio(top[0]?.breadth ?? null, 0)}；最弱参与：{bottom[0]?.sw_l1}{" "}
-            {ratio(bottom[0]?.breadth ?? null, 0)}（收益 {pct(bottom[0]?.ew_ret ?? null)}）。
+            ② {L("最强参与", "Broadest")}: {top[0]?.sw_l1} {ratio(top[0]?.breadth ?? null, 0)}；{L("最弱参与", "Narrowest")}: {bottom[0]?.sw_l1}{" "}
+            {ratio(bottom[0]?.breadth ?? null, 0)}（{L("收益", "return")} {pct(bottom[0]?.ew_ret ?? null)}）。
           </li>
           <li>
-            ③ 涨停 {last.limit_up_n} / 跌停 {last.limit_down_n}，炸板率 {zhaban === null ? "—" : ratio(zhaban, 0)}，连板 {last.streak_n ?? 0} 家，最高 {last.max_streak ?? "—"} 板。
+            ③ {L("涨停", "Limit-ups")} {num(last.limit_up_n)} / {L("跌停", "downs")} {num(last.limit_down_n)}，{L("炸板率", "broken rate")} {zhaban === null ? "—" : ratio(zhaban, 0)}，{L("连板家数", "2+ streak count")} {num(last.streak_n)}，{L("最高板数", "max streak")} {last.max_streak ?? "—"}。
           </li>
         </ul>
       </div>
@@ -170,14 +176,14 @@ export default function Briefing() {
         <span className="rounded border border-[#e4e7ec] px-1.5 py-0.5 text-[#475467]">mart.market_day</span>
         <span>→</span>
         <span className="rounded border border-[#e4e7ec] px-1.5 py-0.5 text-[#475467]">page</span>
-        <span className="ml-auto">N {meta?.n_stocks ?? "—"} · 等权 · 截尾 1%/99%</span>
+        <span className="ml-auto">N {meta?.n_stocks ?? "—"} · {L("等权 · 统计保留原始收益", "EW · statistics use raw returns")}</span>
       </div>
 
       <div className="mt-2 flex flex-col gap-1 text-[10.5px] leading-relaxed text-[#98a2b3] sm:flex-row sm:items-center sm:justify-between">
         <span>
-          炸板率 {zhaban === null ? "—" : ratio(zhaban, 0)} · 连板 {last.streak_n ?? 0} 家 · 最高 {last.max_streak ?? "—"} 板 · 新高 {last.new_high_n} / 新低 {last.new_low_n}
+          {L("炸板率", "Broken rate")} {zhaban === null ? "—" : ratio(zhaban, 0)} · {L("连板家数", "2+ streak count")} {num(last.streak_n)} · {L("最高板数", "Max streak")} {last.max_streak ?? "—"} · {L("新高", "New highs")} {last.new_high_n} / {L("新低", "lows")} {last.new_low_n}
         </span>
-        <span className="sm:text-right">BreadthLab v2.4 · 数据截至 {last.trade_date}</span>
+        <span className="sm:text-right">BreadthLab v2.4 · {L("数据截至", "Data as of")} {last.trade_date}</span>
       </div>
     </div>
   );

@@ -9,7 +9,8 @@ python -m pipeline.bootstrap_api --start 20240101
 python -m pipeline.build_marts
 ```
 
-- 每个交易日调用 7 个接口，历史越长越慢
+- 默认从2024-01-01开始。每天7类数据中涨跌停事件分U/D/Z三次，另有4个指数请求，约13次请求/交易日，另加元数据和日历请求；耗时和配额依权限、网络而定。
+- 核心数据缺失或阻断门禁失败则回滚当日并中断；重跑同一区间会跳过较早已完整日期，最近20个交易日重查。
 - `limit_list_d` 需要额外积分；没有权限会自动跳过
 - 适合先跑通，再按需往前补历史
 
@@ -31,6 +32,7 @@ data/snapshot/
 ├─ limit_list_d/*.parquet                # ts_code, trade_date, industry, name, close, pct_chg, ...
 ├─ moneyflow/*.parquet                   # ts_code, trade_date, net_mf_amount, buy_lg_amount, ...
 ├─ margin/*.parquet                      # trade_date, exchange_id, rzye, rzmre, ...
+├─ sw_daily/*.parquet                     # ts_code, trade_date, name, close, pct_change, vol, amount, pe, pb, float_mv, total_mv
 └─ index_daily/
    ├─ 000300.SH.parquet
    ├─ 000905.SH.parquet
@@ -56,10 +58,12 @@ python -m pipeline.build_marts
 |---|---|
 | `core_stock_day`（约 1,000 万行） | 1–2 GB |
 | `feat_stock` + marts | 1.5–2 GB |
-| 单文件 dashboard（内联字体与数据） | 15–35 MB |
+| 单文件 dashboard（内联字体与数据） | 本轮实测约60.8 MB；随字体、覆盖范围变化 |
 
 ## 常见问题
 
 **`lake.duckdb` 被占用**：更新任务和 API 会争抢 DuckDB 文件锁。API 已改为每个请求结束后释放；更新器会等待并重试。详见 [`data_sources.md`](data_sources.md) 第 7 节。
 
-**没有 Tushare 积分**：`daily`、`daily_basic`、`adj_factor`、`stk_limit` 需要 2000 积分；`limit_list_d`、`moneyflow` 需要更多。没有权限时对应数据集会跳过，页面对应位置显示 `—`。
+**没有 Tushare 积分**：权限以账户为准；本轮实际账户可访问四类核心数据、资金流、两融和指数，事件接口不可用。首次API建库必须能访问四类核心数据，不能跳过核心失败。可选数据失败记录warning并保留未知值。这不保证其他账户有相同权限。
+
+历史部分日期即使已有行也可能不完整。`pipeline.repair_history` 按局部交易日股票数中位数检测异常偏少日期，只允许在显式指定的现有数据库副本运行；默认生成计划，`--apply` 才联网回补，每日事务提交，失败保留原日数据。该启发式不能证明所有单股漏行或上游错误均已消除。详见最终交付报告。

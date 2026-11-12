@@ -1,6 +1,7 @@
 import type { EChartsOption } from "echarts";
 import { axisStyle, baseChart, type Palette } from "./theme";
 import { shortDate } from "./format";
+import { escapeHtml } from "./html";
 
 export interface LimitQuality {
   trade_date: string;
@@ -16,7 +17,8 @@ export function limitQualityChart(p: Palette, rows: LimitQuality[], lang: string
   const fd = rows.map((r) => (r.fd_ratio == null ? null : +(r.fd_ratio * 100).toFixed(2)));
   const valid = fd.filter((v): v is number => v != null);
   const max = Math.max(...valid, 1) * 1.25;
-  const median = valid.length ? [...valid].sort((a, b) => a - b)[Math.floor(valid.length / 2)] : null;
+  const ordered = [...valid].sort((a, b) => a - b);
+  const median = valid.length ? (ordered[Math.floor((valid.length - 1) / 2)] + ordered[Math.floor(valid.length / 2)]) / 2 : null;
 
   return {
     ...baseChart(p),
@@ -30,7 +32,7 @@ export function limitQualityChart(p: Palette, rows: LimitQuality[], lang: string
         const r = rows[i];
         if (!r) return "";
         return `<div style="min-width:168px">
-          <div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${r.trade_date}</div>
+          <div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${escapeHtml(r.trade_date)}</div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${lang === "en" ? "Seal / float cap" : "封单 / 流通市值"}</span><b>${fd[i] == null ? "—" : fd[i] + "%"}</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${lang === "en" ? "Opened share" : "开板比例"}</span><b>${r.open_share == null ? "—" : (r.open_share * 100).toFixed(0) + "%"}</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${lang === "en" ? "Avg open times" : "平均开板次数"}</span><b>${r.avg_open_times?.toFixed(2) ?? "—"}</b></div>

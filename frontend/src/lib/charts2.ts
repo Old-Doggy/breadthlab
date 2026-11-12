@@ -3,6 +3,7 @@ import type { MarketDay, SectorDay, StockRow } from "./api";
 import { axisStyle, baseChart, type Palette } from "./theme";
 import { money, shortDate } from "./format";
 import { regimeOf, regimeLabel, type RegimeKey } from "./regime";
+import { escapeHtml } from "./html";
 
 export const regimeColor = (k: RegimeKey): string =>
   k === "broad_up"
@@ -82,11 +83,11 @@ export function treemapChart(p: Palette, stocks: StockRow[], lang = "zh"): EChar
       formatter: (params: unknown) => {
         const q = params as { data?: { name?: string; ret?: number; code?: string; value?: number; other?: number } };
         const d = q.data || {};
-        if (d.ret === undefined) return `<div style="font-weight:600">${d.name ?? ""}</div>`;
+        if (d.ret === undefined) return `<div style="font-weight:600">${escapeHtml(d.name)}</div>`;
         return `<div style="min-width:150px">
-          <div style="font-weight:600;margin-bottom:4px">${d.name}${d.code ? ` <span style="font-family:monospace;font-size:9px;color:${p.muted}">${d.code}</span>` : ""}</div>
+          <div style="font-weight:600;margin-bottom:4px">${escapeHtml(d.name)}${d.code ? ` <span style="font-family:monospace;font-size:9px;color:${p.muted}">${escapeHtml(d.code)}</span>` : ""}</div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "涨跌", "Return")}</span><b style="color:${(d.ret || 0) >= 0 ? p.up : p.down}">${((d.ret || 0) * 100).toFixed(2)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "成交额", "Turnover")}</span><b>${money((d.value || 0))}</b></div>${d.other ? `<div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "合并股票", "Merged")}</span><b>${d.other}</b></div>` : ""}
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "成交额", "Turnover")}</span><b>${money((d.value || 0), lang)}</b></div>${d.other ? `<div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "合并股票", "Merged")}</span><b>${d.other}</b></div>` : ""}
         </div>`;
       },
     },
@@ -141,29 +142,32 @@ export function treemapChart(p: Palette, stocks: StockRow[], lang = "zh"): EChar
   };
 }
 
-/** 集中度：Top10 周均贡献 + 20 日均值。 */
+/** 集中度：Top10每5个交易日均值 + 20日均值。缺失观察不补0。 */
 export function concentrationChart(p: Palette, rows: MarketDay[], lang = "zh"): EChartsOption {
-  const roll = (vals: number[], w = 20) =>
+  const mean = (vals: (number | null)[], digits: number) => {
+    if (!vals.length || vals.some((v) => v == null || !Number.isFinite(v))) return null;
+    return +(vals.reduce<number>((sum, v) => sum + v!, 0) / vals.length).toFixed(digits);
+  };
+  const percent = (value: number | null | undefined) => value == null ? null : value * 100;
+  const roll = (vals: (number | null)[], w = 20) =>
     vals.map((_, i) => {
       if (i < w - 1) return null;
-      const s = vals.slice(i - w + 1, i + 1).reduce((a, b) => a + b, 0);
-      return +(s / w).toFixed(1);
+      return mean(vals.slice(i - w + 1, i + 1), 1);
     });
-  const top10 = rows.map((r) => +(((r.top10_share || 0) * 100).toFixed(1)));
-  const gain = rows.map((r) => +(((r.gain_share_top5pct || 0) * 100).toFixed(1)));
+  const top10 = rows.map((r) => percent(r.top10_share));
   const avg10 = roll(top10);
 
-  const weekly: { date: string; top10: number; avg: number | null; gain: number; hhi: number }[] = [];
+  const weekly: { date: string; top10: number | null; avg: number | null; gain: number | null; hhi: number | null; n: number }[] = [];
   for (let i = 0; i < rows.length; i += 5) {
     const chunk = rows.slice(i, i + 5);
     const end = i + chunk.length - 1;
-    const mean = (vals: number[]) => vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
     weekly.push({
       date: rows[end].trade_date,
-      top10: +mean(chunk.map((r) => (r.top10_share || 0) * 100)).toFixed(1),
+      top10: mean(chunk.map((r) => percent(r.top10_share)), 1),
       avg: avg10[end],
-      gain: +mean(chunk.map((r) => (r.gain_share_top5pct || 0) * 100)).toFixed(0),
-      hhi: +mean(chunk.map((r) => r.hhi || 0)).toFixed(0),
+      gain: mean(chunk.map((r) => percent(r.gain_share_top5pct)), 0),
+      hhi: mean(chunk.map((r) => r.hhi ?? null), 0),
+      n: chunk.length,
     });
   }
 
@@ -178,11 +182,11 @@ export function concentrationChart(p: Palette, rows: MarketDay[], lang = "zh"): 
         const w = weekly[arr?.[0]?.dataIndex ?? 0];
         if (!w) return "";
         return `<div style="min-width:176px">
-          <div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${w.date} ${L(lang, "周均", "week avg")}</div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "Top10 波动占比", "Top10 share")}</span><b>${w.top10.toFixed(1)}%</b></div>
+          <div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${escapeHtml(w.date)} · ${w.n} ${L(lang, "交易日均值", "session avg")}</div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "Top10 波动占比", "Top10 share")}</span><b>${w.top10 == null ? "—" : w.top10.toFixed(1) + "%"}</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "20 日均值", "20d avg")}</span><b>${w.avg === null ? "—" : w.avg + "%"}</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "涨幅前 5% 份额", "Top 5% gain share")}</span><b>${w.gain}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>HHI</span><b>${w.hhi}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "涨幅前 5% 份额", "Top 5% gain share")}</span><b>${w.gain == null ? "—" : w.gain + "%"}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>HHI</span><b>${w.hhi ?? "—"}</b></div>
         </div>`;
       },
     },
@@ -196,14 +200,14 @@ export function concentrationChart(p: Palette, rows: MarketDay[], lang = "zh"): 
     yAxis: {
       type: "value",
       min: 0,
-      max: 20,
-      interval: 5,
+      max: 100,
+      interval: 20,
       ...axisStyle(p),
       axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%" },
     },
     series: [
       {
-        name: lang === "en" ? "Top10 weekly avg" : "Top10 周均值",
+        name: lang === "en" ? "Top10 5-session avg" : "Top10 每5交易日均值",
         type: "bar",
         data: weekly.map((w) => w.top10),
         barWidth: "55%",
@@ -232,17 +236,12 @@ export function regimeScatter(
   const amtMax = Math.max(...rows.map((r) => r.amount || 0), 1);
   const sand = p.bg === "#f6f2e8" ? "#a8864a" : "#a67f3f";
   const tone = (v: number) => mix(sand, v >= 0 ? p.up : p.down, 0.35 + Math.min(1, Math.abs(v) / 3) * 0.65);
-  const jitter = (d: string) => {
-    let h = 0;
-    for (let i = 0; i < d.length; i++) h = (h * 31 + d.charCodeAt(i)) | 0;
-    return [(((h % 19) - 9) / 9) * 0.035, ((((h >> 3) % 13) - 6) / 6) * 0.35] as const;
-  };
-  const data = rows.map((r) => {
-    const ret = +(r.ew_ret * 100).toFixed(2);
-    const breadth = +(r.breadth * 100).toFixed(1);
-    const [jx, jy] = jitter(r.trade_date);
+  const valid = rows.filter((r) => r.breadth != null && Number.isFinite(r.breadth));
+  const data = valid.map((r) => {
+    const ret = r.ew_ret * 100;
+    const breadth = r.breadth * 100;
     return {
-      value: [ret + jx, breadth + jy, r.amount || 0, r.csd],
+      value: [ret, breadth, r.amount || 0, r.csd],
       rawRet: ret,
       rawBreadth: breadth,
       trade_date: r.trade_date,
@@ -253,7 +252,7 @@ export function regimeScatter(
 
   const xsAll = rows.map((r) => r.ew_ret * 100);
   const bound = Math.max(1, Math.ceil(Math.max(...xsAll.map(Math.abs)) * 2) / 2);
-  const trail = rows.slice(-trailN);
+  const trail = valid.slice(-trailN);
 
   return {
     ...baseChart(p),
@@ -272,11 +271,11 @@ export function regimeScatter(
         const ret = q.data.rawRet;
         const breadth = q.data.rawBreadth;
         return `<div style="min-width:158px">
-          <div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${q.data.trade_date}</div>
+          <div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${escapeHtml(q.data.trade_date)}</div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "等权收益", "EW return")}</span><b style="color:${ret >= 0 ? p.up : p.down}">${ret.toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${breadth.toFixed(0)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "分化度", "Dispersion")}</span><b>${(csd * 100).toFixed(2)}pp</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "状态", "Regime")}</span><b>${q.data.regime}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "分化度", "Dispersion")}</span><b>${csd == null ? "—" : (csd * 100).toFixed(2) + "pp"}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${L(lang, "状态", "Regime")}</span><b>${escapeHtml(q.data.regime)}</b></div>
         </div>`;
       },
     },
@@ -297,7 +296,7 @@ export function regimeScatter(
     series: [
       {
         type: "line",
-        data: trail.map((r) => [+(r.ew_ret * 100).toFixed(2), +(r.breadth * 100).toFixed(1)]),
+        data: trail.map((r) => [r.ew_ret * 100, r.breadth * 100]),
         showSymbol: false,
         silent: true,
         z: 1,
@@ -321,10 +320,10 @@ export function regimeScatter(
       },
       {
         type: "effectScatter",
-        data: rows
+        data: valid
           .filter((r) => r.trade_date === selected)
           .map((r) => ({
-            value: [+(r.ew_ret * 100).toFixed(2), +(r.breadth * 100).toFixed(1)],
+            value: [r.ew_ret * 100, r.breadth * 100],
             trade_date: r.trade_date,
           })),
         symbolSize: 13,
@@ -353,11 +352,12 @@ export function dispersionChart(p: Palette, rows: MarketDay[], lang = "zh"): ECh
       trigger: "axis",
       formatter: (params: unknown) => {
         const arr = params as { dataIndex: number }[];
-        const r = rows[arr[0].dataIndex];
-        return `<div style="font-family:monospace;font-size:12px;color:${p.muted}">${r.trade_date}</div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "横截面标准差", "Cross-sectional σ")}</span><b>${(r.csd * 100).toFixed(2)}pp</b></div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>IQR</span><b>${(r.iqr * 100).toFixed(2)}pp</b></div>
-          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "等权-加权", "EW − CW")}</span><b>${(r.ew_cw_gap * 100).toFixed(2)}%</b></div>`;
+        const r = rows[arr?.[0]?.dataIndex];
+        if (!r) return "";
+        return `<div style="font-family:monospace;font-size:12px;color:${p.muted}">${escapeHtml(r.trade_date)}</div>
+          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "横截面标准差", "Cross-sectional σ")}</span><b>${r.csd == null ? "—" : (r.csd * 100).toFixed(2) + "pp"}</b></div>
+          <div style="display:flex;gap:16px;justify-content:space-between"><span>IQR</span><b>${r.iqr == null ? "—" : (r.iqr * 100).toFixed(2) + "pp"}</b></div>
+          <div style="display:flex;gap:16px;justify-content:space-between"><span>${L(lang, "等权-加权", "EW − CW")}</span><b>${r.ew_cw_gap == null ? "—" : (r.ew_cw_gap * 100).toFixed(2) + "pp"}</b></div>`;
       },
     },
     xAxis: {
@@ -377,7 +377,7 @@ export function dispersionChart(p: Palette, rows: MarketDay[], lang = "zh"): ECh
       {
         name: lang === "en" ? "Cross-section SD" : "横截面标准差",
         type: "line",
-        data: rows.map((r) => +(r.csd * 100).toFixed(2)),
+        data: rows.map((r) => r.csd == null ? null : +(r.csd * 100).toFixed(2)),
         showSymbol: false,
         smooth: 0.2,
         lineStyle: { color: p.text2, width: 2 },
@@ -398,7 +398,7 @@ export function dispersionChart(p: Palette, rows: MarketDay[], lang = "zh"): ECh
       {
         name: lang === "en" ? "IQR" : "IQR",
         type: "line",
-        data: rows.map((r) => +(r.iqr * 100).toFixed(2)),
+        data: rows.map((r) => r.iqr == null ? null : +(r.iqr * 100).toFixed(2)),
         showSymbol: false,
         smooth: 0.2,
         lineStyle: { color: p.accent, width: 1.8, opacity: 0.95 },

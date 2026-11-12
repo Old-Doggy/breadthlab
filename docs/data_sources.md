@@ -5,13 +5,13 @@
 | 数据集 | 主源 | 备用源 | 备用源覆盖 | 说明 |
 |---|---|---|---|---|
 | `daily` OHLCV | Tushare | **akshare**（东方财富快照） | ✅ 全市场 | 收盘后快照 |
-| `daily_basic` 市值/换手/PE/PB | Tushare | **akshare** | ✅ 全市场 | 流通市值覆盖率 100% |
+| `daily_basic` 市值/换手/PE/PB | Tushare | **akshare** | 部分字段 | 动态PE不冒充TTM；自由流通换手率留空 |
 | `stk_limit` 涨跌停价 | Tushare | **akshare**（按昨收+板块规则计算） | ✅ 全市场 | ST 5%、主板 10%、双创 20% |
-| `adj_factor` 复权因子 | Tushare | **akshare**（前一日顺延） | ✅ 99.93% | 除权日会偏一天 |
+| `adj_factor` 复权因子 | Tushare | **akshare**（最后有效因子顺延） | 有历史有效值的股票 | 除权期间可能持续偏差；覆盖须重新验质 |
 | `limit_list_d` 涨停明细 | Tushare（无权限） | — | ❌ | 涨停/连板已改用价格判定 |
 | `moneyflow` 资金流 | Tushare | — | ❌ | 页面显示 `—` |
 | `margin` 两融 | Tushare | — | ❌ | T+1 发布 |
-| `index_daily` 指数 | akshare | Tushare | ✅ | 主源已是 akshare |
+| `index_daily` 指数 | Tushare | — | 标准更新无备用 | 单独手动回补脚本不等于自动降级 |
 | `trade_cal` 日历 | Tushare | akshare | ✅ | 仅备用源模式使用 |
 
 > 本地快照 `./data/snapshot` 也是 Tushare 导出，**不算独立源**；
@@ -23,18 +23,18 @@
 
 ```
 Tushare 成功 → 写入，source=tushare
-Tushare 抛错/空 → akshare 快照 → 写入，source=akshare，并记 warning
-两者都失败 → 跳过该数据集，继续下一个（不阻断当日更新）
+Tushare 抛错/空 → 当天收盘后akshare快照 → 写入，source=akshare，记warning并安排主源重试
+核心数据集缺失 → 当日失败回滚，旧数据不能冒充本次成功；可选数据集缺失 → warning并独立回补
 ```
 
 - 默认 `--source auto`：上面的行为
-- `--source tushare`：只用主源，失败即报错（严格模式）
+- `--source tushare`：只用主源，任一请求失败/为空即失败（严格演练模式；两融T+1或无权限事件也会失败）
 - `--source akshare`：跳过 Tushare，直接用备用源（用于演练/应急）
-- `--source akshare --dry-run`：只探测各数据集行数，不写库
+- `--source akshare --dry-run`：只列待处理日期，不请求行情、不写库
 
 `data/meta/status.json` 的 `sources` 字段会记录每个数据集**实际使用**的源。
 
-## 3. 验证结果（2026-11-11）
+## 3. 历史验证记录（2026-11-11，本轮未复核，不代表当前修复版实测）
 
 **跨源一致性**：把 akshare 快照的「昨收」与 Tushare 11-10 收盘价比对：
 
@@ -51,15 +51,15 @@ Tushare 抛错/空 → akshare 快照 → 写入，source=akshare，并记 warni
 ## 4. 已知限制
 
 1. **只能补当天**：快照是实时行情，收盘后取当日；历史回补仍需 Tushare 或本地快照。
-2. **复权因子顺延**：若当日恰好除权，`adj_close` 会偏一天（月度收益端点受影响，日频不受影响）。
-3. **涨跌停价为计算值**：按昨收 × (1±幅度) 四舍五入，可能与交易所精确值差 0.01 元；ST/新股规则已按名称与板块处理。
-4. **资金流/两融/涨停明细缺失**：对应图表显示 `—`，质量门禁会记录 warning。
+2. **复权因子顺延**：除权期间MA/新高可能失真，连续降级偏差可持续；不承诺“只偏一天”。来源被标记，主源恢复后重新请求降级日期。
+3. **涨跌停价为计算值**：支持301创业板；上市前5日及上市信息不明时不伪造限价。特殊重新上市等规则仍需上游真实限价；普通规则计算可能差0.01元。
+4. **资金流/两融/涨停明细缺失**：更新报告记录warning，前端保留未知值，状态栏提示数据告警。实测事件接口不可用，不能宣称已补齐。
 5. 快照单次约 60–70 秒（59 页分页），进程内缓存一次。
 
 ## 5. 手动命令
 
 ```powershell
-# 探测备用源（不写库，约 70 秒）
+# 仅计划日期（可能查询日历，不请求行情、不写库）
 python -m pipeline.update_daily --source akshare --dry-run
 
 # 应急：用备用源写当天

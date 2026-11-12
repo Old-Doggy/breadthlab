@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "updated_days": 20,
+  "warning_count": 32,
+  "sources": {
+    "daily": "tushare",
+    "daily_basic": "tushare",
+    "adj_factor": "tushare",
+    "stk_limit": "tushare",
+    "limit_list_d": "unavailable",
+    "moneyflow": "tushare",
+    "margin": "tushare",
+    "index": "tushare"
+  },
+  "seconds": 141.5
+}

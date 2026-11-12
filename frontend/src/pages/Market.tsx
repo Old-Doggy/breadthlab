@@ -1,4 +1,4 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,8 @@ import { concentrationChart, dispersionChart } from "../lib/charts2";
 import EChart from "../components/EChart";
 import { Card } from "../components/Card";
 import { PageHead } from "../components/PageHead";
+import { DataState } from "../components/DataState";
+import { median } from "../lib/viewMetrics";
 import { Segmented } from "../components/Segmented";
 
 const RANGES = [
@@ -38,7 +40,8 @@ export default function Market() {
     setParams(next, { replace: true });
   };
 
-  const { data: series } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
+  const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
+  const { data: series, isError, isPending } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
 
   const rows = useMemo(() => {
     if (!series) return [];
@@ -46,6 +49,8 @@ export default function Market() {
     return series.slice(-n);
   }, [series, range]);
 
+  if (isError) return <DataState error />;
+  if (series && !rows.length) return <DataState />;
   if (!series) {
     return (
       <div className="flex flex-col gap-3.5">
@@ -57,15 +62,16 @@ export default function Market() {
   }
 
   const cum = rows.reduce((a, r) => a * (1 + r.ew_ret), 1) - 1;
-  const avgBreadth = rows.reduce((a, r) => a + r.breadth, 0) / rows.length;
-  const maxB = rows.reduce((a, r) => (r.breadth > a.breadth ? r : a), rows[0]);
-  const minB = rows.reduce((a, r) => (r.breadth < a.breadth ? r : a), rows[0]);
+  const breadthRows = rows.filter((r) => r.breadth != null && Number.isFinite(r.breadth));
+  const avgBreadth = breadthRows.length ? breadthRows.reduce((a, r) => a + r.breadth, 0) / breadthRows.length : null;
+  const maxB = breadthRows.reduce((a, r) => (r.breadth > a.breadth ? r : a), breadthRows[0]);
+  const minB = breadthRows.reduce((a, r) => (r.breadth < a.breadth ? r : a), breadthRows[0]);
   const maxC = rows.reduce((a, r) => ((r.top10_share || 0) > (a.top10_share || 0) ? r : a), rows[0]);
   const avgCsd = rows.reduce((a, r) => a + r.csd, 0) / rows.length;
   const last = rows[rows.length - 1];
   const prev = series[series.length - 2];
-  const breadthValues = [...rows].map((r) => r.breadth).sort((a, b) => a - b);
-  const medBreadth = breadthValues[Math.floor(breadthValues.length / 2)];
+  const breadthValues = breadthRows.map((r) => r.breadth).sort((a, b) => a - b);
+  const medBreadth = median(breadthValues);
 
   const stats = [
     {
@@ -82,21 +88,21 @@ export default function Market() {
     },
     {
       k: zh ? "广度最高日" : "Broadest day",
-      v: shortDate(maxB.trade_date),
+      v: maxB ? shortDate(maxB.trade_date) : "—",
       tone: "",
-      s: `${ratio(maxB.breadth, 0)} · ${pct(maxB.ew_ret)}`,
+      s: maxB ? `${ratio(maxB.breadth, 0)} · ${pct(maxB.ew_ret)}` : "—",
     },
     {
       k: zh ? "广度最低日" : "Narrowest day",
-      v: shortDate(minB.trade_date),
+      v: minB ? shortDate(minB.trade_date) : "—",
       tone: "",
-      s: `${ratio(minB.breadth, 0)} · ${pct(minB.ew_ret)}`,
+      s: minB ? `${ratio(minB.breadth, 0)} · ${pct(minB.ew_ret)}` : "—",
     },
     {
       k: zh ? "最集中日" : "Most concentrated",
       v: shortDate(maxC.trade_date),
       tone: "",
-      s: `Top10 波动占比 ${ratio(maxC.top10_share, 0)} · CSD ${(avgCsd * 100).toFixed(2)}pp`,
+      s: `${zh ? "Top10 波动占比" : "Top10 share"} ${ratio(maxC.top10_share, 0)} · CSD ${(avgCsd * 100).toFixed(2)}pp`,
     },
   ];
 
@@ -147,7 +153,7 @@ export default function Market() {
             <span>SOURCE <b>daily / daily_basic / index_daily</b></span>
             <span>N <b>{rows.length}</b></span>
             <span>{zh ? "等权" : "EW"}</span>
-            <span>{zh ? "截尾 1% / 99%" : "clipped 1% / 99%"}</span>
+            <span>{zh ? "统计未截尾" : "unclipped statistics"}</span>
             <a className="r hover:underline" href="#/about">{zh ? "口径说明 →" : "Method →"}</a>
           </div>
         }
@@ -162,12 +168,12 @@ export default function Market() {
           <Card
             index="02"
             title={zh ? "集中度：Top10 波动占比" : "Concentration"}
-            subtitle={zh ? "柱：周均 Top10 波动占比；线：20 日均值" : "Bars: weekly average Top10 share; line: 20-day average"}
+            subtitle={zh ? "柱：每5交易日均值；线：20日均值" : "Bars: 5-session average Top10 share; line: 20-session average"}
             right={
               <div className="flex items-center gap-3 text-[10.5px] text-[var(--faint)]">
                 <span className="flex items-center gap-1">
                   <i className="inline-block h-[7px] w-[3px] rounded-sm" style={{ background: p.text2, opacity: 0.5 }} />
-                  {zh ? "周均" : "weekly"}
+                  {zh ? "5日均值" : "5-session"}
                 </span>
                 <span className="flex items-center gap-1">
                   <i className="inline-block h-[2px] w-4" style={{ background: p.accent }} />
@@ -175,14 +181,14 @@ export default function Market() {
                 </span>
               </div>
             }
-            prov={zh ? "Top10 全市场流通市值权重股贡献 = Σ（前一日全市场流通市值权重 × 收益）/ 全市场市值加权收益；Top5% 为涨幅前 5% 股票的正收益份额" : "Top-10 contribution and top-5% gain share"}
+            prov={zh ? "Top10 波动占比 = 前10权重股绝对贡献之和 / 全体绝对贡献之和；Top5% 为涨幅前5%股票的正收益份额" : "Top10 absolute-contribution share; top-5% positive-return share"}
             padded={false}
             bodyClass="pt-0"
             footer={
               <div className="provline">
                 <span>SOURCE <b>daily / daily_basic</b></span>
                 <span>{zh ? "前一日全市场流通市值权重" : "prior-day float-cap weights"}</span>
-                <span className="r">{zh ? "周均 = 5 个交易日平均" : "weekly = 5 sessions"}</span>
+                <span className="r">{zh ? "每5个交易日分组，末组可能不足5日" : "5-session blocks; final block may be shorter"}</span>
               </div>
             }
           >
@@ -225,7 +231,7 @@ export default function Market() {
 
       <div className="flex flex-wrap items-center justify-between gap-2 pb-1 pt-0.5 text-[10.5px] text-[var(--faint)]">
         <span className="font-mono">
-          {zh ? "数据源：Tushare Pro · daily / daily_basic / index_daily" : "Source: Tushare Pro · daily / daily_basic / index_daily"}
+          {`${zh ? "来源" : "Source"}: ${meta?.source || (zh ? "未知" : "unknown")} · daily / daily_basic / index_daily`}
         </span>
         <span className="mono">
           {last.trade_date} · {zh ? "日均成交额" : "avg turnover"} {money(rows.reduce((a, r) => a + r.amount, 0) / rows.length)}

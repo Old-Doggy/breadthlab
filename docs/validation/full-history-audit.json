@@ -1,0 +1,11 @@
+{
+  "daily_key_duplicates": 0,
+  "market_n": 0,
+  "market_ew": 0,
+  "market_breadth": 0,
+  "market_cw": 0,
+  "monthly_ew": 0,
+  "unknown_listing_rows": 3056,
+  "unknown_listing_codes": 3,
+  "historical_warning": "unknown listing identities excluded; static industry mapping is not point in time"
+}

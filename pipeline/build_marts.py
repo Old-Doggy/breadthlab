@@ -10,6 +10,8 @@ import time
 
 from . import settings
 from .db import session
+from .io_utils import atomic_write_json
+from .locking import publish_lock
 
 SQL_VIEW = """
 CREATE OR REPLACE VIEW v_stock AS
@@ -41,14 +43,41 @@ LEFT JOIN read_csv_auto('{bridge}', header=true) b
 
 SQL_FEAT = """
 CREATE OR REPLACE TABLE feat_stock AS
-WITH base AS (
-    SELECT s.*,
-           row_number() OVER (PARTITION BY ts_code ORDER BY trade_date) AS n_hist_all,
-           lag(s.circ_mv) OVER (PARTITION BY ts_code ORDER BY trade_date) AS prev_circ_mv
+WITH calendar AS (
+    SELECT trade_date,
+           lag(trade_date) OVER (ORDER BY trade_date) AS market_prev_date,
+           row_number() OVER (ORDER BY trade_date) AS trade_num
+    FROM core_trade_cal WHERE is_open = 1
+), listings AS (
+    SELECT ts_code, coalesce(try_cast(list_date AS DATE),
+           try_strptime(list_date::VARCHAR, '%Y%m%d')::DATE) AS listed_on
+    FROM core_stock_meta
+), listing_calendar AS (
+    SELECT m.ts_code, m.listed_on, min(c.trade_num) AS listing_num
+    FROM listings m LEFT JOIN calendar c ON c.trade_date >= m.listed_on
+    GROUP BY m.ts_code, m.listed_on
+), base AS (
+    SELECT s.*, c.market_prev_date, c.trade_num, m.listed_on, m.listing_num,
+           row_number() OVER (PARTITION BY s.ts_code ORDER BY s.trade_date) AS n_hist_all,
+           lag(s.trade_date) OVER (PARTITION BY s.ts_code ORDER BY s.trade_date) AS observed_prev_date,
+           CASE WHEN p.circ_mv > 0 AND isfinite(p.circ_mv) THEN p.circ_mv END AS prev_circ_mv
     FROM v_stock s
+    LEFT JOIN calendar c ON c.trade_date = s.trade_date
+    LEFT JOIN listing_calendar m ON m.ts_code = s.ts_code
+    LEFT JOIN core_stock_day p ON p.ts_code = s.ts_code AND p.trade_date = c.market_prev_date
     WHERE s.exchange IN ('SSE', 'SZSE')
       AND s.market IN ('主板', '创业板', '科创板')
-      AND s.ret IS NOT NULL
+      AND s.ret IS NOT NULL AND isfinite(s.ret) AND s.ret > -1
+      AND s.close > 0 AND isfinite(s.close)
+      AND s.adj_factor > 0 AND isfinite(s.adj_factor)
+      AND s.adj_close > 0 AND isfinite(s.adj_close)
+), aged AS (
+    SELECT *, CASE
+        WHEN listed_on IS NULL THEN true
+        WHEN listed_on < (SELECT min(trade_date) FROM calendar) THEN false
+        ELSE trade_num - listing_num < 5
+        END AS is_new_stock
+    FROM base
 ),
 feat AS (
     SELECT *,
@@ -58,14 +87,15 @@ feat AS (
            avg(adj_close) OVER w60  AS ma60,
            avg(adj_close) OVER w250 AS ma250,
            count(adj_close) OVER w252 AS n_hist252,
-           (n_hist_all <= 5) AS is_new_stock,
-           (up_limit IS NOT NULL AND close >= up_limit * 0.999) AS is_limit_up,
-           (down_limit IS NOT NULL AND close <= down_limit * 1.001) AS is_limit_down,
+           CASE WHEN NOT is_new_stock AND up_limit > 0 AND isfinite(up_limit)
+                THEN close >= up_limit * 0.999 END AS is_limit_up,
+           CASE WHEN NOT is_new_stock AND down_limit > 0 AND isfinite(down_limit)
+                THEN close <= down_limit * 1.001 END AS is_limit_down,
            (high = low) AS is_one_word,
            (ret > 0) AS adv,
            (ret < 0) AS dec,
            (ret = 0) AS flat
-    FROM base
+    FROM aged
     WINDOW w20  AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW),
            w60  AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW),
            w250 AS (PARTITION BY ts_code ORDER BY trade_date ROWS BETWEEN 249 PRECEDING AND CURRENT ROW),
@@ -73,7 +103,7 @@ feat AS (
 ),
 flagged AS (
     SELECT *,
-           sum(CASE WHEN is_limit_up THEN 0 ELSE 1 END)
+           sum(CASE WHEN is_limit_up AND observed_prev_date = market_prev_date THEN 0 ELSE 1 END)
                OVER (PARTITION BY ts_code ORDER BY trade_date
                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS lim_grp
     FROM feat
@@ -122,12 +152,12 @@ ret_agg AS (
            skewness(ret)                                    AS skew,
            sum(amount) * 1000                               AS amount,
            avg(turnover_rate)                               AS turnover_rate,
-           count(*) FILTER (WHERE is_limit_up)              AS limit_up_n,
-           count(*) FILTER (WHERE is_limit_up AND (up_limit / nullif(pre_close, 0) - 1) >= 0.06) AS limit_up_ex_st_n,
-           count(*) FILTER (WHERE is_limit_down)            AS limit_down_n,
-           max(CASE WHEN is_limit_up THEN limit_streak END)  AS max_streak_price,
-           count(*) FILTER (WHERE limit_streak >= 2)         AS streak_n_price,
-           count(*) FILTER (WHERE limit_streak = 1)          AS first_board_n_price,
+           CASE WHEN count(is_limit_up) > 0 THEN count(*) FILTER (WHERE is_limit_up) END AS limit_up_n,
+           CASE WHEN count(is_limit_up) > 0 THEN count(*) FILTER (WHERE is_limit_up AND (up_limit / nullif(pre_close, 0) - 1) >= 0.06) END AS limit_up_ex_st_n,
+           CASE WHEN count(is_limit_down) > 0 THEN count(*) FILTER (WHERE is_limit_down) END AS limit_down_n,
+           CASE WHEN count(is_limit_up) > 0 THEN coalesce(max(CASE WHEN is_limit_up THEN limit_streak END), 0) END AS max_streak_price,
+           CASE WHEN count(is_limit_up) > 0 THEN count(*) FILTER (WHERE limit_streak >= 2) END AS streak_n_price,
+           CASE WHEN count(is_limit_up) > 0 THEN count(*) FILTER (WHERE limit_streak = 1) END AS first_board_n_price,
            count(*) FILTER (WHERE adj_close >= hi252 AND n_hist252 >= 250) AS new_high_n,
            count(*) FILTER (WHERE adj_close <= lo252 AND n_hist252 >= 250) AS new_low_n,
            count(*) FILTER (WHERE n_hist_all >= 20)          AS n_hist20,
@@ -167,10 +197,10 @@ idx AS (
 ),
 flow AS (
     SELECT trade_date,
-           count(*) FILTER (WHERE net_mf_amount > 0)::DOUBLE / nullif(count(*), 0) AS flow_breadth,
+           count(*) FILTER (WHERE net_mf_amount > 0)::DOUBLE / nullif(count(net_mf_amount), 0) AS flow_breadth,
            sum(net_mf_amount) * 10000                AS net_mf_amount,
            sum(main_net_amount) * 10000              AS main_net_amount
-    FROM core_flow_day
+    FROM core_flow_day JOIN f USING (ts_code, trade_date)
     GROUP BY trade_date
 ),
 margin AS (
@@ -207,8 +237,10 @@ SELECT r.trade_date,
        r.streak_n_price   AS streak_n,
        r.first_board_n_price AS first_board_n,
        l.limit_fd_amount,
-       r.limit_up_ex_st_n,
-       (r.limit_up_n - r.limit_up_ex_st_n)                    AS limit_up_st_n,
+       NULL::BIGINT AS limit_up_ex_st_n,
+       NULL::BIGINT AS limit_up_st_n,
+       r.limit_up_ex_st_n AS limit_up_non5pct_n,
+       (r.limit_up_n - r.limit_up_ex_st_n) AS limit_up_5pct_n,
        CASE WHEN l.broken_n IS NOT NULL AND l.limit_up_list_n IS NOT NULL
             THEN l.broken_n::DOUBLE / nullif(l.limit_up_list_n + l.broken_n, 0) END AS broken_rate,
        r.new_high_n, r.new_low_n,
@@ -261,7 +293,7 @@ SELECT trade_date, sw_l1,
        stddev_samp(ret)                                  AS csd,
        sum(amount) * 1000                                AS amount,
        avg(turnover_rate)                                AS turnover_rate,
-       count(*) FILTER (WHERE is_limit_up)               AS limit_up_n
+       CASE WHEN count(is_limit_up) > 0 THEN count(*) FILTER (WHERE is_limit_up) END AS limit_up_n
 FROM w2
 GROUP BY trade_date, sw_l1
 ORDER BY trade_date, sw_l1
@@ -271,10 +303,12 @@ SQL_SECTOR_RANK = """
 CREATE OR REPLACE TABLE mart_sector_rank AS
 WITH s AS (
     SELECT trade_date, sw_l1, ew_ret,
-           exp(sum(ln(1 + ew_ret)) OVER (
+           CASE WHEN count(ew_ret) OVER (
+               PARTITION BY sw_l1 ORDER BY trade_date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
+           ) = 20 THEN exp(sum(ln(1 + ew_ret)) OVER (
                PARTITION BY sw_l1 ORDER BY trade_date
                ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
-           )) - 1 AS ret20
+           )) - 1 END AS ret20
     FROM mart_sector_day
 )
 SELECT trade_date, sw_l1, ret20,
@@ -327,7 +361,8 @@ SELECT date_trunc('month', trade_date)::DATE AS month,
        avg(hhi)                    AS hhi,
        avg(top10_share)            AS top10_share,
        exp(sum(ln(1 + ew_ret))) - 1 AS ew_ret_cum,
-       exp(sum(ln(1 + coalesce(hs300_ret, 0)))) - 1 AS hs300_ret_cum
+       CASE WHEN count(hs300_ret) = count(*) THEN exp(sum(ln(1 + hs300_ret))) - 1 END AS hs300_ret_cum,
+       count(hs300_ret) AS hs300_n_days
 FROM mart_market_day
 GROUP BY 1 ORDER BY 1
 """
@@ -349,11 +384,17 @@ GROUP BY 1, 2 ORDER BY 1, 2
 SQL_LATEST = """
 CREATE OR REPLACE TABLE mart_stock_latest AS
 WITH last_day AS (SELECT max(trade_date) AS d FROM feat_stock)
-SELECT f.ts_code, f.name, f.sw_l1, f.market, f.trade_date, f.close, f.ret,
+SELECT f.ts_code, f.name, f.sw_l1, f.market, last_day.d AS trade_date,
+       f.trade_date AS quote_date, NULL::BOOLEAN AS is_suspended,
+       f.trade_date < last_day.d AS is_stale,
+       f.close, CASE WHEN f.trade_date = last_day.d THEN f.pre_close ELSE f.close END AS pre_close,
+       CASE WHEN f.trade_date = last_day.d THEN f.ret ELSE 0 END AS ret,
        f.circ_mv, f.total_mv, f.turnover_rate, f.pe_ttm, f.pb,
-       f.amount * 1000 AS amount, f.is_limit_up, f.is_limit_down
+       CASE WHEN f.trade_date = last_day.d THEN f.amount * 1000 ELSE 0 END AS amount,
+       CASE WHEN f.trade_date = last_day.d THEN f.is_limit_up ELSE false END AS is_limit_up,
+       CASE WHEN f.trade_date = last_day.d THEN f.is_limit_down ELSE false END AS is_limit_down
 FROM feat_stock f, last_day
-WHERE f.trade_date = last_day.d
+QUALIFY row_number() OVER (PARTITION BY f.ts_code ORDER BY f.trade_date DESC) = 1
 """
 
 STEPS = [
@@ -371,23 +412,26 @@ STEPS = [
 
 
 def run(only: list[str] | None = None) -> dict:
-    bridge = (settings.ROOT / "config" / "industry_bridge.csv").as_posix()
+    bridge = (settings.ROOT / "config" / "industry_bridge.csv").as_posix().replace("'", "''")
     report = {}
-    with session(wait=True, timeout_sec=600) as con:
-        for name, sql in STEPS:
-            if only and not any(o in name for o in only):
-                continue
-            t0 = time.time()
-            print(f"[marts] {name} ...", flush=True)
-            con.execute(sql.format(bridge=bridge) if "{bridge}" in sql else sql)
-            rows = con.execute(f"SELECT count(*) FROM {name}").fetchone()[0]
-            sec = round(time.time() - t0, 1)
-            report[name] = {"rows": int(rows), "sec": sec}
-            print(f"[marts] {name}: {rows:,} rows in {sec}s", flush=True)
-        con.execute("CHECKPOINT")
-    (settings.META / "marts.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    with publish_lock(), session(wait=True, timeout_sec=600) as con:
+        con.execute("BEGIN TRANSACTION")
+        try:
+            for name, sql in STEPS:
+                if only and not any(o in name for o in only):
+                    continue
+                t0 = time.time()
+                print(f"[marts] {name} ...", flush=True)
+                con.execute(sql.format(bridge=bridge) if "{bridge}" in sql else sql)
+                rows = con.execute(f"SELECT count(*) FROM {name}").fetchone()[0]
+                sec = round(time.time() - t0, 1)
+                report[name] = {"rows": int(rows), "sec": sec}
+                print(f"[marts] {name}: {rows:,} rows in {sec}s", flush=True)
+            con.execute("COMMIT")
+        except BaseException:
+            con.execute("ROLLBACK")
+            raise
+    atomic_write_json(settings.META / "marts.json", report)
     return report
 
 

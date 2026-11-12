@@ -13,6 +13,8 @@ import { downloadDataUrl } from "../lib/download";
 import EChart, { type EChartHandle } from "../components/EChart";
 import { Card } from "../components/Card";
 import { MonthlyGrid } from "../components/MonthlyGrid";
+import { DataState } from "../components/DataState";
+import { cumulativePath, median } from "../lib/viewMetrics";
 import { PageHead } from "../components/PageHead";
 
 export default function Sectors() {
@@ -31,10 +33,10 @@ export default function Sectors() {
     setParams(next, { replace: true });
   };
 
-  const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
+  const { data: meta, isError: metaError, isPending: metaPending } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const d = meta?.last_trade_date;
 
-  const { data: sectors } = useQuery({
+  const { data: sectors, isError: sectorError, isPending: sectorPending } = useQuery({
     queryKey: ["sectors", d],
     queryFn: () => api.sectors(d as string),
     enabled: !!d,
@@ -83,13 +85,11 @@ export default function Sectors() {
     const ret = new Map(rows.map((m) => [`${m.month}|${m.sw_l1}`, m.ew_ret_cum]));
     const scored = [...new Set(rows.map((m) => m.sw_l1))]
       .map((name) => {
-        const values = winMonths.map((mo) => ret.get(`${mo}|${name}`) ?? null);
-        let v = 1;
-        values.forEach((r) => {
-          if (r != null) v *= 1 + r;
-        });
-        return { name, score: v - 1, values };
+        const monthlyReturns = winMonths.map((mo) => ret.get(`${mo}|${name}`) ?? null);
+        const path = cumulativePath(monthlyReturns);
+        return { name, score: path[path.length - 1] ?? null, values: monthlyReturns };
       })
+      .filter((row): row is { name: string; score: number; values: (number | null)[] } => row.score != null)
       .sort((a, b) => b.score - a.score);
     const groups = heatScope === "all" ? [scored] : scored.length <= 12 ? [scored] : [scored.slice(0, 6), scored.slice(-6)];
     const shown = groups.flat();
@@ -115,16 +115,16 @@ export default function Sectors() {
     const selloff = rows.filter((r) => r.ew_ret < 0 && r.breadth < 0.5).length;
     return { broad, narrow, selloff, mixed: rows.length - broad - narrow - selloff, over50: rows.filter((r) => r.breadth >= 0.5).length };
   }, [rows]);
-  const selStocks = (stocks ?? []).slice(0, 400);
+  const selStocks = (stocks ?? []).filter((s) => s.sw_l1 === selected).sort((a, b) => b.ret - a.ret);
   const top = selStocks.slice(0, 6);
   const bottom = selStocks.slice(-6).reverse();
 
-  if (!rows.length) return <div className="skeleton h-[560px] w-full" />;
+  if (!rows.length) return <DataState error={metaError || sectorError} loading={metaPending || (!!d && sectorPending && !sectorError)} />;
 
   const best = board[0];
   const worst = board[board.length - 1];
   const upCount = rows.filter((r) => r.ew_ret > 0).length;
-  const med = [...rows].map((r) => r.ew_ret).sort((a, b) => a - b)[Math.floor(rows.length / 2)];
+  const med = median(rows.map((r) => r.ew_ret));
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -303,7 +303,7 @@ export default function Sectors() {
               ariaLabel={zh ? "市场热力图" : "Market treemap"}
             />
           ) : (
-            <div className="skeleton h-full w-full" />
+            <DataState />
           )}
         </div>
       </Card>
@@ -353,17 +353,17 @@ export default function Sectors() {
             <span>SOURCE <b>sw_daily</b></span>
             <span>{zh ? "申万一级" : "SW L1"}</span>
             <span>{heat.count} {zh ? "个行业" : "sectors"} · {heat.months.length} {zh ? "个月" : "months"} · {heat.months[0]?.slice(0, 7)} → {heat.months[heat.months.length - 1]?.slice(0, 7)}</span>
-            <span className="r">{heatScope === "focus" ? (zh ? "累计复利" : "compounded") : zh ? "12M 累计" : "12M cumulative"}</span>
+            <span className="r">{heatScope === "focus" ? (zh ? "累计复利" : "compounded") : zh ? `${heatWindow}M 累计` : `${heatWindow}M cumulative`}</span>
           </div>
         }
       >
         <div className="px-3 pb-3">
           {!heat.rows ? (
-            <div className="skeleton h-[420px] w-full" />
+            <DataState />
           ) : heatScope === "all" ? (
             <div className="space-y-0.5">
               <div className="mb-2 flex items-center justify-between">
-                <span className="micro">{zh ? "12M 累计收益排序" : "12M cumulative ranking"}</span>
+                <span className="micro">{zh ? `${heatWindow}M 累计收益排序` : `${heatWindow}M cumulative ranking`}</span>
                 <span className="micro text-[var(--faint)]">{zh ? "点击行下钻" : "click to drill"}</span>
               </div>
               {heat.groups[0].map((s) => {
@@ -420,7 +420,7 @@ export default function Sectors() {
             title={zh ? "排名迁移 · 20 日收益" : "Rank migration"}
             subtitle={zh ? "20 日收益排名 · 26 周 · 每周采样 · 越靠上越强" : "20-day return rank · 26 weeks · weekly sample · higher is stronger"}
             right={<span className="pill">26W</span>}
-            prov={zh ? "选取稳定排名前 4、区间波动最大 2，加上当前选中行业；排名 1 = 最强" : "Top 4 stable, top 2 movers, plus the selected sector; rank 1 = strongest"}
+            prov={zh ? "选取平均排名前3、区间波动最大2，并纳入当前选中行业；排名1=最强" : "Top 3 by average rank, top 2 movers, with the selected sector included; rank 1 = strongest"}
             padded={false}
             bodyClass="pt-0"
             footer={
@@ -444,7 +444,7 @@ export default function Sectors() {
                   ariaLabel={zh ? "行业排名迁移" : "Sector rank migration"}
                 />
               ) : (
-                <div className="skeleton h-full w-full" />
+                <DataState />
               )}
             </div>
           </Card>
@@ -488,7 +488,7 @@ export default function Sectors() {
                 </div>
               </>
             ) : (
-              <div className="skeleton h-[360px] w-full" />
+              <DataState />
             )}
           </Card>
         </div>

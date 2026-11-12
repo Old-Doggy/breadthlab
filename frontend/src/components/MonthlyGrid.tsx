@@ -1,3 +1,4 @@
+import { cumulativePath } from "../lib/viewMetrics";
 ﻿import { useId } from "react";
 import type { Palette } from "../lib/theme";
 import { pct } from "../lib/format";
@@ -27,11 +28,11 @@ function MiniCard({
   const w = 220;
   const h = 74;
   const span = max - min || 1;
-  const values = row.values.map((v) => v ?? 0);
+  const values = cumulativePath(row.values);
   const x = (i: number) => 4 + (i / Math.max(1, values.length - 1)) * (w - 8);
   const y = (v: number) => h - 6 - ((v - min) / span) * (h - 12);
-  const pts = values.map((v, i) => [x(i), y(v)]);
-  const line = pts.map((pt, i) => `${i ? "L" : "M"}${pt[0].toFixed(1)},${pt[1].toFixed(1)}`).join(" ");
+  const pts = values.map((v, i) => v == null ? null : [x(i), y(v)]);
+  const line = pts.map((pt, i) => pt ? `${i && pts[i-1] ? "L" : "M"}${pt[0].toFixed(1)},${pt[1].toFixed(1)}` : "").join(" ");
   const area = `${line} L${x(values.length - 1).toFixed(1)},${h - 6} L4,${h - 6} Z`;
   const color = row.score >= 0 ? p.up : p.down;
   const zero = y(0);
@@ -58,7 +59,7 @@ function MiniCard({
         <line x1="4" x2={w - 4} y1={zero} y2={zero} stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="2 3" />
         <path d={area} fill={`url(#g-${id})`} />
         <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={x(values.length - 1)} cy={y(values[values.length - 1])} r="2.6" fill={color} />
+        {values[values.length - 1] != null && <circle cx={x(values.length - 1)} cy={y(values[values.length - 1]!)} r="2.6" fill={color} />}
       </svg>
       <div className="mt-0.5 flex justify-between font-mono text-[9.5px] text-[var(--faint)]">
         <span>{months[0]?.slice(2, 7)}</span>
@@ -81,7 +82,7 @@ export function MonthlyGrid({
   lang: string;
   onSelect: (name: string) => void;
 }) {
-  const values = groups.flat().flatMap((g) => g.values.filter((v): v is number => v != null));
+  const values = groups.flat().flatMap((g) => cumulativePath(g.values).filter((v): v is number => v != null));
   const lo = Math.min(0, ...values);
   const hi = Math.max(0, ...values);
   const pad = Math.max(0.01, (hi - lo) * 0.08);
@@ -94,7 +95,7 @@ export function MonthlyGrid({
         <div key={gi}>
           <div className="mb-1.5 flex items-center justify-between">
             <span className="micro">{gi === 0 ? (zh ? "领涨 6" : "Top 6") : (zh ? "落后 6" : "Bottom 6")}</span>
-            <span className="mono text-[9.5px] text-[var(--faint)]">{zh ? "同一纵轴 · 12M 累计" : "shared scale · 12M cumulative"}</span>
+            <span className="mono text-[9.5px] text-[var(--faint)]">{zh ? "同一纵轴 · 区间累计" : "shared scale · cumulative"}</span>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
             {group.map((row) => (

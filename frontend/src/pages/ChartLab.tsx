@@ -1,3 +1,6 @@
+import { escapeHtml } from "../lib/html";
+import { cumulativePath } from "../lib/viewMetrics";
+import { DataState } from "../components/DataState";
 ﻿import { useMemo, type ReactNode } from "react";
 import type { EChartsOption } from "echarts";
 import { useQuery } from "@tanstack/react-query";
@@ -6,7 +9,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, type MarketDay, type SectorDay } from "../lib/api";
 import { useUI } from "../store/ui";
 import { paletteFor, axisStyle, baseChart, type Palette } from "../lib/theme";
-import { pct, shortDate } from "../lib/format";
+import { money, pct, shortDate } from "../lib/format";
 import { treemapChart } from "../lib/charts2";
 import { PageHead } from "../components/PageHead";
 import { Card } from "../components/Card";
@@ -52,10 +55,10 @@ function regimeOption(p: Palette, rows: MarketDay[], lang: string): EChartsOptio
       formatter: (params: unknown) => {
         const q = params as { data: { value: number[]; raw: MarketDay } };
         const r = q.data.raw;
-        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${r.trade_date}</div>
+        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${escapeHtml(r.trade_date)}</div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "EW return" : "等权收益"}</span><b style="color:${r.ew_ret >= 0 ? p.up : p.down}">${(r.ew_ret * 100).toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Breadth" : "上涨占比"}</span><b>${(r.breadth * 100).toFixed(0)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Turnover" : "成交额"}</span><b>${((r.amount || 0) / 1e8).toFixed(0)} 亿</b></div>`;
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Turnover" : "成交额"}</span><b>${money(r.amount, lang)}</b></div>`;
       },
     },
     xAxis: {
@@ -133,8 +136,8 @@ function regimeOption(p: Palette, rows: MarketDay[], lang: string): EChartsOptio
 /* ------------------------------------------------------------------ */
 function regimeHexOption(p: Palette, rows: MarketDay[], lang: string): EChartsOption {
   const data = rows.slice(-750);
-  const xmin = -12;
-  const xmax = 12;
+  const xmin = Math.min(-12, ...data.map((r) => Math.floor(r.ew_ret * 100)));
+  const xmax = Math.max(12, ...data.map((r) => Math.ceil(r.ew_ret * 100)));
   const nx = 24;
   const ny = 15;
   const dx = (xmax - xmin) / nx;
@@ -252,7 +255,7 @@ function tapeOption(p: Palette, rows: MarketDay[], lang: string): EChartsOption 
         const i = (params as { dataIndex: number }[])[0]?.dataIndex ?? 0;
         const r = data[i];
         if (!r) return "";
-        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${r.trade_date}</div>
+        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${escapeHtml(r.trade_date)}</div>
           <div style="display:flex;justify-content:space-between;gap:18px"><span>${lang === "en" ? "EW return" : "等权收益"}</span><b style="color:${r.ew_ret >= 0 ? p.up : p.down}">${(r.ew_ret * 100).toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:18px"><span>${lang === "en" ? "Breadth" : "上涨占比"}</span><b>${(r.breadth * 100).toFixed(0)}%</b></div>`;
       },
@@ -328,10 +331,10 @@ function bubbleOption(p: Palette, rows: SectorDay[], lang: string): EChartsOptio
       trigger: "item",
       formatter: (params: unknown) => {
         const r = (params as { data: { raw: SectorDay } }).data.raw;
-        return `<div style="min-width:150px"><div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${r.sw_l1}</div>
+        return `<div style="min-width:150px"><div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${escapeHtml(r.sw_l1)}</div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "EW return" : "等权收益"}</span><b style="color:${r.ew_ret >= 0 ? p.up : p.down}">${(r.ew_ret * 100).toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Breadth" : "上涨占比"}</span><b>${(r.breadth * 100).toFixed(0)}%</b></div>
-          <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Turnover" : "成交额"}</span><b>${((r.amount || 0) / 1e8).toFixed(0)} 亿</b></div></div>`;
+          <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Turnover" : "成交额"}</span><b>${money(r.amount, lang)}</b></div></div>`;
       },
     },
     xAxis: {
@@ -399,7 +402,7 @@ function distOption(p: Palette, bins: { b: number; n: number; lo: number; hi: nu
         const i = (params as { dataIndex: number }[])[0]?.dataIndex ?? 0;
         const b = bins[i];
         if (!b) return "";
-        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${(((b.lo + b.hi) / 2) * 100).toFixed(1)}%</div><b>${b.n}</b> ${lang === "en" ? "stocks" : "只"}`;
+        return `<div style="font-family:monospace;font-size:12px;color:${p.muted};margin-bottom:5px">${i === 0 ? "≤" : i === bins.length-1 ? "≥" : ""}${(((b.lo + b.hi) / 2) * 100).toFixed(1)}%</div><b>${b.n}</b> ${lang === "en" ? "stocks" : "只"}`;
       },
     },
     xAxis: {
@@ -434,8 +437,8 @@ function distOption(p: Palette, bins: { b: number; n: number; lo: number; hi: nu
           lineStyle: { color: p.axis, type: "dashed", width: 1 },
           label: { color: p.muted, fontSize: 10 },
           data: [
-            { xAxis: Math.max(0, bins.findIndex((b) => b.lo <= 0 && b.hi >= 0)), label: { formatter: "0%", position: "end" } },
-            { xAxis: Math.max(0, bins.findIndex((b) => b.lo <= stats.med && b.hi >= stats.med)), label: { formatter: `中位 ${(stats.med * 100).toFixed(1)}%`, position: "insideEndTop" } },
+            { xAxis: Math.max(0, bins.findIndex((b) => b.lo <= 0 && b.hi > 0)), label: { formatter: "0%", position: "end" } },
+            { xAxis: Math.max(0, bins.findIndex((b) => b.lo <= stats.med && b.hi > stats.med)), label: { formatter: `${lang === "en" ? "Median" : "中位"} ${(stats.med * 100).toFixed(1)}%`, position: "insideEndTop" } },
           ],
         },
       },
@@ -446,18 +449,18 @@ function distOption(p: Palette, bins: { b: number; n: number; lo: number; hi: nu
 function MiniPath({ values, score, color }: { values: (number | null)[]; score: number; color: string }) {
   const w = 150;
   const h = 56;
-  const nums = values.map((v) => v ?? 0);
+  const nums = values.filter((v): v is number => v != null);
   const min = Math.min(...nums, 0);
   const max = Math.max(...nums, 0);
   const span = max - min || 1;
-  const pts = nums.map((v, i) => [2 + (i / Math.max(1, nums.length - 1)) * (w - 4), h - 4 - ((v - min) / span) * (h - 8)]);
-  const d = pts.map((pt, i) => `${i ? "L" : "M"}${pt[0].toFixed(1)},${pt[1].toFixed(1)}`).join(" ");
+  const pts = values.map((v, i) => v == null ? null : [2 + (i / Math.max(1, values.length - 1)) * (w - 4), h - 4 - ((v - min) / span) * (h - 8)]);
+  const d = pts.map((pt, i) => pt ? `${i && pts[i-1] ? "L" : "M"}${pt[0].toFixed(1)},${pt[1].toFixed(1)}` : "").join(" ");
   const zero = h - 4 - ((0 - min) / span) * (h - 8);
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full" aria-hidden>
       <line x1="0" x2={w} y1={zero} y2={zero} stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="2 3" />
       <path d={d} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="2.8" fill={color} />
+      {pts[pts.length - 1] && <circle cx={pts[pts.length - 1]![0]} cy={pts[pts.length - 1]![1]} r="2.8" fill={color} />}
       <title>{`${(score * 100).toFixed(2)}%`}</title>
     </svg>
   );
@@ -473,32 +476,29 @@ export default function ChartLab() {
   const only = params.get("demo") as Demo | null;
   const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const d = meta?.last_trade_date;
-  const { data: market } = useQuery({ queryKey: ["lab-market"], queryFn: () => api.marketSeries() });
+  const { data: market, isError: marketError, isPending: marketPending } = useQuery({ queryKey: ["lab-market"], queryFn: () => api.marketSeries() });
   const { data: sectors } = useQuery({ queryKey: ["lab-sectors", d], queryFn: () => api.sectors(d as string), enabled: !!d });
   const { data: stocks } = useQuery({ queryKey: ["lab-stocks", d], queryFn: () => api.stocks(d as string), enabled: !!d });
   const { data: distribution } = useQuery({ queryKey: ["lab-dist", d], queryFn: () => api.distribution(d as string), enabled: !!d });
   const { data: monthly } = useQuery({ queryKey: ["lab-monthly"], queryFn: () => api.sectorMonthly() });
 
-  const rows = market ?? [];
+  const rows = (market ?? []).filter((r) => r.breadth != null && Number.isFinite(r.breadth));
   const small = useMemo(() => {
     if (!monthly?.length) return null;
     const months = [...new Set(monthly.map((r) => r.month))].sort().slice(-12);
     const by = new Map<string, Map<string, number>>();
     monthly.forEach((r) => {
       if (!by.has(r.sw_l1)) by.set(r.sw_l1, new Map());
-      by.get(r.sw_l1)!.set(r.month, r.ew_ret);
+      by.get(r.sw_l1)!.set(r.month, r.ew_ret_cum);
     });
     const all = [...by.entries()].map(([name, vals]) => {
-      let v = 1;
-      const values = months.map((m) => {
-        const r = vals.get(m);
-        if (r != null) v *= 1 + r;
-        return r == null ? null : (v - 1) * 100;
-      });
-      return { name, values, score: v - 1 };
-    }).sort((a, b) => b.score - a.score);
+      const path = cumulativePath(months.map((m) => vals.get(m) ?? null));
+      return { name, values: path.map((v) => v == null ? null : v * 100), score: path[path.length - 1] ?? null };
+    }).filter((row): row is { name: string; values: (number | null)[]; score: number } => row.score != null).sort((a, b) => b.score - a.score);
     return { top: all.slice(0, 6), bottom: all.slice(-6).reverse() };
   }, [monthly]);
+
+  if (!rows.length) return <DataState error={marketError} loading={marketPending} />;
 
   const cards: { key: Demo; node: ReactNode }[] = [
     {
@@ -514,7 +514,7 @@ export default function ChartLab() {
           footer={<div className="provline"><span>SOURCE <b>daily</b></span><span>{zh ? "750 个交易日" : "750 sessions"}</span><span className="r">{zh ? "当日点：红圈" : "today: red ring"}</span></div>}
         >
           <div className={only === "regime" ? "h-[620px] px-2 pb-2" : "h-[440px] px-2 pb-2"}>
-            {rows.length ? <EChart option={regimeOption(p, rows, lang)} /> : <div className="skeleton h-full w-full" />}
+            {rows.length ? <EChart option={regimeOption(p, rows, lang)} /> : <DataState />}
           </div>
         </Card>
       ),
@@ -532,7 +532,7 @@ export default function ChartLab() {
           footer={<div className="provline"><span>SOURCE <b>daily</b></span><span>{zh ? "750 个交易日" : "750 sessions"}</span><span className="r">{zh ? "无点重叠" : "no overplotting"}</span></div>}
         >
           <div className={only === "regime-hex" ? "h-[620px] px-2 pb-2" : "h-[440px] px-2 pb-2"}>
-            {rows.length ? <EChart option={regimeHexOption(p, rows, lang)} /> : <div className="skeleton h-full w-full" />}
+            {rows.length ? <EChart option={regimeHexOption(p, rows, lang)} /> : <DataState />}
           </div>
         </Card>
       ),
@@ -549,7 +549,7 @@ export default function ChartLab() {
           footer={<div className="provline"><span>SOURCE <b>daily</b></span><span>{zh ? "近 240 个交易日" : "last 240 sessions"}</span><span className="r">{zh ? "悬停看广度" : "hover for breadth"}</span></div>}
         >
           <div className={only === "tape" ? "h-[480px] px-2 pb-2" : "h-[340px] px-2 pb-2"}>
-            {rows.length ? <EChart option={tapeOption(p, rows, lang)} /> : <div className="skeleton h-full w-full" />}
+            {rows.length ? <EChart option={tapeOption(p, rows, lang)} /> : <DataState />}
           </div>
         </Card>
       ),
@@ -567,7 +567,7 @@ export default function ChartLab() {
           footer={<div className="provline"><span>SOURCE <b>sw_daily</b></span><span>{zh ? "31 个申万一级行业" : "31 SW L1 sectors"}</span><span className="r">{zh ? "悬停看成交额" : "hover for turnover"}</span></div>}
         >
           <div className={only === "bubble" ? "h-[620px] px-2 pb-2" : "h-[430px] px-2 pb-2"}>
-            {sectors?.length ? <EChart option={bubbleOption(p, sectors, lang)} /> : <div className="skeleton h-full w-full" />}
+            {sectors?.length ? <EChart option={bubbleOption(p, sectors, lang)} /> : <DataState />}
           </div>
         </Card>
       ),
@@ -582,10 +582,10 @@ export default function ChartLab() {
           right={<GradientKey p={p} left={zh ? "跌" : "down"} right={zh ? "涨" : "up"} />}
           padded={false}
           bodyClass="pt-0"
-          footer={<div className="provline"><span>SOURCE <b>daily</b></span><span>{zh ? "截尾 ±11%" : "clipped ±11%"}</span><span className="r">{zh ? "样本 5,217" : "n = 5,217"}</span></div>}
+          footer={<div className="provline"><span>SOURCE <b>daily</b></span><span>{zh ? "端点箱包含区间外收益" : "tail bins include outliers"}</span><span className="r">{`${zh ? "样本" : "n ="} ${distribution?.stats.n ?? "—"}`}</span></div>}
         >
           <div className={only === "distribution" ? "h-[560px] px-2 pb-2" : "h-[390px] px-2 pb-2"}>
-            {distribution?.bins.length ? <EChart option={distOption(p, distribution.bins, distribution.stats, lang)} /> : <div className="skeleton h-full w-full" />}
+            {distribution?.bins.length ? <EChart option={distOption(p, distribution.bins, distribution.stats, lang)} /> : <DataState />}
           </div>
         </Card>
       ),
@@ -603,7 +603,7 @@ export default function ChartLab() {
           footer={<div className="provline"><span>SOURCE <b>daily</b></span><span>{zh ? "申万一级分组" : "SW L1 grouped"}</span><span className="r">{zh ? "点击色块可选行业" : "click to select"}</span></div>}
         >
           <div className={only === "treemap" ? "h-[650px] px-2 pb-2" : "h-[470px] px-2 pb-2"}>
-            {stocks?.length ? <EChart option={treemapChart(p, stocks, lang)} /> : <div className="skeleton h-full w-full" />}
+            {stocks?.length ? <EChart option={treemapChart(p, stocks, lang)} /> : <DataState />}
           </div>
         </Card>
       ),
@@ -639,7 +639,7 @@ export default function ChartLab() {
                   </div>
                 ))}
               </div>
-            ) : <div className="skeleton h-[260px] w-full" />}
+            ) : <DataState />}
           </div>
         </Card>
       ),

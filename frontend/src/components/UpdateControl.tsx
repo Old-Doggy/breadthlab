@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, CloudDownload, Loader2, X } from "lucide-react";
@@ -43,6 +43,7 @@ export function UpdateControl() {
         hide.current = window.setTimeout(() => setVisible(false), 8000);
       } else if (next.state === "failed") {
         clearTimers();
+        qc.invalidateQueries();
         setVisible(true);
         hide.current = window.setTimeout(() => setVisible(false), 14000);
       }

@@ -1,3 +1,5 @@
+import { escapeHtml } from "../lib/html";
+import { median as sampleMedian } from "../lib/viewMetrics";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +12,7 @@ import { money, num, pct, ratio, shortDate, trendClass } from "../lib/format";
 import { downloadCsv } from "../lib/download";
 import EChart from "../components/EChart";
 import { Card, MicroLabel } from "../components/Card";
+import { DataState } from "../components/DataState";
 import { PageHead } from "../components/PageHead";
 
 type SortKey = "ret" | "circ_mv" | "turnover_rate" | "amount";
@@ -78,14 +81,14 @@ export default function Stocks() {
   const [sel, setSel] = useState<StockRow | null>(null);
   const [params, setParams] = useSearchParams();
 
-  const { data: meta } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
+  const { data: meta, isError: metaError, isPending: metaPending } = useQuery({ queryKey: ["meta"], queryFn: api.meta });
   const d = meta?.last_trade_date;
   const { data: sectors } = useQuery({
     queryKey: ["sectors", d],
     queryFn: () => api.sectors(d as string),
     enabled: !!d,
   });
-  const { data: stocks } = useQuery({
+  const { data: stocks, isError: stocksError } = useQuery({
     queryKey: ["stocks", d, sector],
     queryFn: () => api.stocks(d as string, sector || undefined),
     enabled: !!d,
@@ -136,7 +139,7 @@ export default function Stocks() {
   }, [all, query]);
 
   const scatterOption = useMemo(() => {
-    const pts = scatterPool.map((s) => ({
+    const pts = scatterPool.filter((s) => s.circ_mv != null && s.circ_mv > 0).map((s) => ({
       name: s.name,
       value: [
         Math.log10(Math.max((s.circ_mv || 1) / 1e4, 0.5)),
@@ -154,7 +157,8 @@ export default function Stocks() {
     }));
     const maxAmt = Math.max(...pts.map((x) => x.value[2]), 1);
     const ys = pts.map((x) => x.value[1]);
-    const ymax = 21;
+    const ymax = Math.max(21, ...ys.map((v) => Math.ceil(v + 1)));
+    const ymin = Math.min(-21, ...ys.map((v) => Math.floor(v - 1)));
     return {
       ...baseChart(p),
       grid: { left: 8, right: 14, top: 16, bottom: 24, containLabel: true },
@@ -164,10 +168,10 @@ export default function Stocks() {
           const q = params as { data: { raw: StockRow } };
           const s = q.data.raw;
           return `<div style="min-width:168px">
-            <div style="font-weight:600">${s.name} <span style="color:${p.muted};font-family:monospace;font-size:10px">${s.ts_code}</span></div>
+            <div style="font-weight:600">${escapeHtml(s.name)} <span style="color:${p.muted};font-family:monospace;font-size:10px">${escapeHtml(s.ts_code)}</span></div>
             <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Return" : "收益"}</span><b style="color:${s.ret >= 0 ? p.up : p.down}">${(s.ret * 100).toFixed(2)}%</b></div>
-            <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Float cap" : "流通市值"}</span><b>${(s.circ_mv / 1e4).toFixed(0)}亿</b></div>
-            <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Turnover" : "换手率"}</span><b>${(s.turnover_rate || 0).toFixed(2)}%</b></div>
+            <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Float cap" : "流通市值"}</span><b>${money(s.circ_mv * 10000, lang)}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Turnover" : "换手率"}</span><b>${s.turnover_rate == null ? "—" : s.turnover_rate.toFixed(2) + "%"}</b></div>
             <div style="display:flex;justify-content:space-between;gap:16px"><span>${lang === "en" ? "Amount" : "成交额"}</span><b>${money(s.amount)}</b></div>
           </div>`;
         },
@@ -186,7 +190,7 @@ export default function Stocks() {
       },
       yAxis: {
         type: "value",
-        min: -ymax,
+        min: ymin,
         max: ymax,
         ...axisStyle(p),
         axisLabel: { ...axisStyle(p).axisLabel, formatter: "{value}%", fontSize: 11 },
@@ -226,7 +230,7 @@ export default function Stocks() {
     });
     const centers = Array.from({ length: N }, (_, i) => lo + (i + 0.5) * step);
     const sorted = [...vals].sort((a, b) => a - b);
-    const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+    const median = sampleMedian(sorted);
     const sand = p.bg === "#f6f2e8" ? "#b9a67a" : "#c9b98f";
     const mixHex = (a: string, b: string, t: number) => {
       const A = a.replace("#", "");
@@ -256,7 +260,7 @@ export default function Stocks() {
         max: 11,
         splitNumber: 4,
         ...axisStyle(p),
-        name: lang === "en" ? "Stock return" : "个股收益",
+        name: lang === "en" ? "Stock return (tail bins include outliers)" : "个股收益（端点箱含区间外值）",
         nameLocation: "middle",
         nameGap: 23,
         nameTextStyle: { color: p.muted, fontSize: 10.5 },
@@ -283,7 +287,7 @@ export default function Stocks() {
           markLine: {
             silent: true,
             symbol: "none",
-            data: [
+            data: median == null ? [] : [
               { xAxis: median, label: { show: false } },
             ],
             lineStyle: { color: p.axis, type: "dashed", width: 1 },
@@ -295,13 +299,14 @@ export default function Stocks() {
 
   const histMedian = useMemo(() => {
     const vals = filtered.map((s) => s.ret * 100).sort((a, b) => a - b);
-    return vals.length ? vals[Math.floor(vals.length / 2)] : 0;
+    return sampleMedian(vals);
   }, [filtered]);
 
   const up = filtered.filter((s) => s.ret > 0).length;
   const flat = filtered.filter((s) => s.ret === 0).length;
 
-  if (!d) return <div className="skeleton h-[600px] w-full" />;
+  if (metaError || stocksError) return <DataState error />;
+  if (!d) return <DataState loading={metaPending} />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -415,8 +420,8 @@ export default function Stocks() {
               <div className="grid grid-cols-2 gap-2.5">
                 {[
                   { k: lang === "en" ? "Return" : "当日收益", v: pct(sel.ret), tone: trendClass(sel.ret) },
-                  { k: lang === "en" ? "Float cap" : "流通市值", v: `${(sel.circ_mv / 1e4).toFixed(0)}亿` },
-                  { k: lang === "en" ? "Turnover" : "换手率", v: `${(sel.turnover_rate || 0).toFixed(2)}%` },
+                  { k: lang === "en" ? "Float cap" : "流通市值", v: money(sel.circ_mv * 10000, lang) },
+                  { k: lang === "en" ? "Turnover" : "换手率", v: sel.turnover_rate == null ? "—" : `${sel.turnover_rate.toFixed(2)}%` },
                   { k: lang === "en" ? "Amount" : "成交额", v: money(sel.amount) },
                   { k: "PE(TTM)", v: sel.pe_ttm ? sel.pe_ttm.toFixed(1) : "—", sub: valuation ? `${lang === "en" ? "3y pct" : "3年分位"} ${valuation.pct}%` : undefined },
                   { k: "PB", v: sel.pb ? sel.pb.toFixed(2) : "—" },
@@ -450,7 +455,7 @@ export default function Stocks() {
           ) : (
             <Card
               title={t("stocks.distribution")}
-              subtitle={lang === "en" ? `Cross-section · x: stock return · median ${histMedian.toFixed(1)}%` : `当前筛选范围的收益分布 · 横轴：个股收益 · 中位 ${histMedian.toFixed(1)}%`}
+              subtitle={lang === "en" ? `Cross-section · x: stock return · median ${histMedian == null ? "—" : histMedian.toFixed(1)}%` : `当前筛选范围的收益分布 · 横轴：个股收益 · 中位 ${histMedian == null ? "—" : histMedian.toFixed(1)}%`}
               right={
                 <span className="pill h-[24px] px-2 text-[11px]">
                   ↑ {ratio(up / Math.max(1, filtered.length), 0)}
@@ -562,8 +567,8 @@ export default function Stocks() {
                   </td>
                   <td className="text-[11.5px] text-[var(--muted)]">{s.sw_l1}</td>
                   <td className={`mono text-right ${trendClass(s.ret)}`}>{pct(s.ret)}</td>
-                  <td className="mono text-right text-[var(--text-2)]">{(s.circ_mv / 1e4).toFixed(0)}亿</td>
-                  <td className="mono text-right text-[var(--text-2)]">{(s.turnover_rate || 0).toFixed(1)}%</td>
+                  <td className="mono text-right text-[var(--text-2)]">{money(s.circ_mv * 10000, lang)}</td>
+                  <td className="mono text-right text-[var(--text-2)]">{s.turnover_rate == null ? "—" : s.turnover_rate.toFixed(1) + "%"}</td>
                   <td className="mono text-right text-[var(--text-2)]">{money(s.amount)}</td>
                   <td className="mono pr-2 text-right text-[var(--faint)]">{s.pe_ttm ? s.pe_ttm.toFixed(1) : "—"}</td>
                 </tr>

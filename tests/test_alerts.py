@@ -2,13 +2,13 @@ from pathlib import Path
 
 from pipeline import alerts, settings
 
-TMP = Path(__file__).resolve().parents[1] / "data" / "tmp_tests"
+TMP = settings.DATA / "tmp_tests"
 
 
 def _setup(monkeypatch):
     TMP.mkdir(parents=True, exist_ok=True)
-    alerts.clear()
     monkeypatch.setattr(settings, "META", TMP)
+    alerts.clear()
 
 
 def test_alert_roundtrip(monkeypatch):

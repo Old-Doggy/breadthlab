@@ -1,7 +1,7 @@
 """源间对账：抽样比较 Tushare 与 akshare 的日收益。
 
 用法：python -m pipeline.reconcile_sources --stocks 30 --days 3
-输出：data/meta/reconcile.json、docs/reconcile.md
+输出：当前数据目录的 meta/reconcile.json、meta/reconcile.md
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ import pandas as pd
 from . import settings
 from .db import session
 from .update_daily import tushare_pro
+from .io_utils import atomic_write_json, atomic_write_text
 
 
 def main(stocks: int = 30, days: int = 3) -> dict:
@@ -36,6 +37,8 @@ def main(stocks: int = 30, days: int = 3) -> dict:
             ).fetchall()
         ]
     random.seed(42)
+    if not dates or not codes:
+        raise RuntimeError("no dated stock observations available for reconciliation")
     sample = sorted(random.sample(codes, min(stocks, len(codes))))
 
     pro = tushare_pro()
@@ -86,7 +89,7 @@ def main(stocks: int = 30, days: int = 3) -> dict:
                 trade_date=lambda x: x.trade_date.astype(str)
             ).to_dict("records"),
         }
-    (settings.META / "reconcile.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(settings.META / "reconcile.json", out)
 
     md = f"""# 源间对账（Tushare vs akshare）
 
@@ -95,11 +98,11 @@ def main(stocks: int = 30, days: int = 3) -> dict:
 - MAE：{out.get('mae_pp', '—')} pp ｜ P95：{out.get('p95_pp', '—')} pp ｜ 最大：{out.get('max_pp', '—')} pp
 - 差异 > 0.1pp 的占比：{out.get('share_gt_0_1pp', '—')}
 
-结论：{'两源在抽样范围内一致（MAE < 0.05pp）' if out.get('mae_pp', 9) < 0.05 else '存在源间差异，页面需标注'}。
+结论：{'无重合记录，无法核验源间差异' if not out.get('pairs') else '两源在抽样范围内一致（MAE < 0.05pp）' if out.get('mae_pp', 9) < 0.05 else '存在源间差异，页面需标注'}。
 
 > 口径：akshare 取不复权日线的“涨跌幅”，Tushare 取 `daily.pct_chg`；仅抽样校验，不作为主数据源。
 """
-    (settings.ROOT / "docs" / "reconcile.md").write_text(md, encoding="utf-8")
+    atomic_write_text(settings.META / "reconcile.md", md)
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return out
 

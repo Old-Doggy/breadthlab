@@ -1,5 +1,6 @@
-﻿import type { EChartsOption } from "echarts";
+import type { EChartsOption } from "echarts";
 import { axisStyle, baseChart, seriesColors, type Palette } from "./theme";
+import { escapeHtml, signedMoney } from "./holdings";
 
 export interface BookRow {
   ts_code: string;
@@ -11,7 +12,7 @@ export interface BookRow {
   cost: number;
   mv: number;
   pnl: number;
-  today: number;
+  today: number | null;
 }
 
 const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
@@ -20,6 +21,7 @@ const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
 export function sectorExposureChart(p: Palette, rows: BookRow[], lang = "zh"): EChartsOption {
   const groups = new Map<string, { mv: number; n: number }>();
   rows.forEach((r) => {
+    if (!(r.shares > 0) || !(r.mv > 0)) return;
     const k = r.sw_l1 || L(lang, "未分类", "Other");
     const cur = groups.get(k) || { mv: 0, n: 0 };
     cur.mv += r.mv || 0;
@@ -45,7 +47,7 @@ export function sectorExposureChart(p: Palette, rows: BookRow[], lang = "zh"): E
         const q = params as { data?: { name?: string; value?: number; n?: number } };
         const d = q.data || {};
         return `<div style="min-width:150px">
-          <div style="font-weight:600;margin-bottom:3px">${d.name ?? ""}</div>
+          <div style="font-weight:600;margin-bottom:3px">${escapeHtml(d.name)}</div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "组合权重", "Book weight")}</span><b>${(d.value ?? 0).toFixed(1)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "持仓数", "Positions")}</span><b>${d.n ?? 0}</b></div>
         </div>`;
@@ -86,8 +88,8 @@ export function sectorExposureChart(p: Palette, rows: BookRow[], lang = "zh"): E
 /** 今日盈亏贡献：按个股正负横向条形。 */
 export function contributionChart(p: Palette, rows: BookRow[], lang = "zh", limit = 10): EChartsOption {
   const data = rows
-    .filter((r) => r.shares > 0)
-    .map((r) => ({ name: r.name, value: +(r.today || 0).toFixed(0), ret: r.ret }))
+    .filter((r) => r.shares > 0 && r.today !== null && Number.isFinite(r.today))
+    .map((r) => ({ name: r.name, value: +r.today!.toFixed(0), ret: r.ret }))
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
     .slice(0, limit)
     .reverse();
@@ -102,8 +104,8 @@ export function contributionChart(p: Palette, rows: BookRow[], lang = "zh", limi
         const q = params as { data?: { name?: string; value?: number; ret?: number } };
         const d = q.data || {};
         return `<div style="min-width:150px">
-          <div style="font-weight:600;margin-bottom:3px">${d.name ?? ""}</div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "今日盈亏", "Today P&L")}</span><b style="color:${(d.value ?? 0) >= 0 ? p.up : p.down}">¥${Math.abs(d.value ?? 0).toLocaleString("en-US")}</b></div>
+          <div style="font-weight:600;margin-bottom:3px">${escapeHtml(d.name)}</div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "今日盈亏", "Today P&L")}</span><b style="color:${(d.value ?? 0) >= 0 ? p.up : p.down}">${signedMoney(d.value ?? 0)}</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "当日涨跌", "Return")}</span><b>${((d.ret ?? 0) * 100).toFixed(2)}%</b></div>
         </div>`;
       },

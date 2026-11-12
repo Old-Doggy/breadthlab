@@ -8,25 +8,25 @@
   <a href="https://github.com/Old-Doggy/breadthlab/actions/workflows/ci.yml"><img src="https://github.com/Old-Doggy/breadthlab/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white" alt="Node">
+  <img src="https://img.shields.io/badge/node-22.18%2B-339933?logo=node.js&logoColor=white" alt="Node">
 </p>
 
 <p align="center">
   <img src="docs/screenshots/today.png" width="880" alt="今日盘面">
 </p>
 
-基于 Tushare 日频数据计算市场广度、等权/市值加权收益、集中度、行业参与和个股分化。包含 8 个页面的 Web 界面、Flask API 与单文件离线导出。
+基于 Tushare 日频数据计算市场广度、等权/市值加权收益、集中度、行业参与和个股分化。包含 8 个主页面、每日简报与图表实验页，以及 Flask API 与单文件离线导出。
 
 ## 特性
 
 - 广度、集中度、行业、个股、情绪、持仓六类视图
-- 每日增量 + 9 条质量门禁；Tushare 故障时降级到 akshare
+- 每日更新 + 14 条质量门禁；当日收盘后可降级到 akshare，历史补数仍需主源
 - 中英双语、深/浅主题、色盲配色、URL 状态、PNG/CSV 导出
 - 支持导出单文件 HTML，离线打开
 
 ## 快速开始
 
-要求：Python 3.12、Node 20+、Tushare Pro token（基础接口需 2000 积分）。
+要求：Python 3.12、Node 22.18+、Tushare Pro token（基础接口需 2000 积分，其他接口权限分别确认）。
 
 ```bash
 git clone https://github.com/Old-Doggy/breadthlab.git
@@ -55,10 +55,15 @@ python -m backend.main      # http://127.0.0.1:8000
 前端与单文件导出：
 
 ```bash
-cd frontend && npm install && npm run build && cd ..
+cd frontend && npm ci && npm run check && cd ..
+python -m pipeline.refresh_status
 python -m pipeline.export_static
 # 打开 frontend/dist/BreadthLab.html
 ```
+
+后续每日发布使用 `python -m pipeline.release`；只重建用 `python -m pipeline.release --rebuild`。
+更新任务、API 按钮和 Windows 脚本共用发布链。失败保留旧 HTML，浏览器已打开的离线包不会自动收到新告警。
+本轮已修复前后端错数路径，并在数据库副本完成历史补数与实际验收；未替换原库或原发布文件。修复、证据与数据源限制见 [最终交付报告](docs/release_completion_report.md)。
 
 ## 文档
 

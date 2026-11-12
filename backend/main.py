@@ -8,25 +8,29 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import sqlite3
 import subprocess
 import sys
 import threading
-import time
 import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import duckdb
 from flask import Flask, abort, g, jsonify, request, send_from_directory
 from flask.json.provider import DefaultJSONProvider
+from werkzeug.exceptions import HTTPException
 
-ROOT = Path(__file__).resolve().parents[1]
-LAKE = ROOT / "data" / "lake.duckdb"
-META = ROOT / "data" / "meta"
-DB = ROOT / "data" / "app.sqlite"
-DIST = ROOT / "frontend" / "dist"
+from pipeline import settings
+
+ROOT = settings.ROOT
+LAKE = settings.LAKE
+META = settings.META
+DB = settings.DATA / "app.sqlite"
+DIST = Path(os.getenv("BREADTHLAB_DIST_DIR", str(ROOT / "frontend" / "dist"))).resolve()
 
 
 class ISOJSONProvider(DefaultJSONProvider):
@@ -42,6 +46,75 @@ app = Flask(__name__, static_folder=None)
 app.json = ISOJSONProvider(app)
 app.json.ensure_ascii = False
 app.json.sort_keys = False
+
+
+@app.before_request
+def validate_api_request():
+    if not request.path.startswith("/api/"):
+        return None
+    for key in ("date", "start", "end"):
+        raw = request.args.get(key)
+        if raw is not None:
+            _date_arg(raw)
+    start, end = request.args.get("start"), request.args.get("end")
+    if start and end and start > end:
+        abort(400, "start must not be after end")
+    if request.method in ("POST", "PATCH", "DELETE"):
+        local = {"localhost", "127.0.0.1", "::1"}
+        if urlsplit(request.host_url).hostname not in local:
+            abort(403, "local host required")
+        if request.remote_addr and request.remote_addr not in local:
+            abort(403, "local client required")
+        origin = request.headers.get("Origin")
+        if origin and (urlsplit(origin).scheme not in {"http", "https"} or urlsplit(origin).hostname not in local):
+            abort(403, "local origin required")
+    return None
+
+
+def _date_arg(raw: str) -> str:
+    try:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+            raise ValueError
+        date.fromisoformat(raw)
+    except ValueError:
+        abort(400, "date must be YYYY-MM-DD")
+    return raw
+
+
+def _code_arg(code: str) -> str:
+    if not re.fullmatch(r"\d{6}\.(?:SH|SZ)", code):
+        abort(400, "invalid A-share code")
+    return code
+
+
+def _quantity(value: Any, field: str) -> float:
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        number = float(value)
+        if not math.isfinite(number) or number < 0:
+            raise ValueError
+    except (TypeError, ValueError, OverflowError):
+        abort(400, f"{field} must be a finite non-negative number")
+    return number
+
+
+def _payload() -> dict:
+    value = request.get_json(silent=True)
+    if not isinstance(value, dict):
+        abort(400, "JSON object required")
+    return value
+
+
+@app.errorhandler(HTTPException)
+def http_error(error):
+    return jsonify({"error": error.name, "detail": error.description}), error.code
+
+
+@app.errorhandler(Exception)
+def internal_error(error):
+    app.logger.error("request failed: %s", type(error).__name__)
+    return jsonify({"error": "internal server error"}), 500
 
 _lock = threading.Lock()
 _update_lock = threading.Lock()
@@ -65,18 +138,26 @@ def con() -> duckdb.DuckDBPyConnection:
         if not LAKE.exists():
             abort(503, "lake.duckdb 尚未构建")
         c = duckdb.connect(str(LAKE), read_only=True)
-        c.execute("SET threads=4")
-        g._con = c
+        try:
+            c.execute("SET threads=4")
+            c.execute("BEGIN TRANSACTION")
+            g._con = c
+        except Exception:
+            c.close()
+            raise
     return c
 
 
 @app.errorhandler(duckdb.Error)
-def _db_busy(e):  # 更新任务持有写锁时，接口返回 503 而不是 500
-    return (
-        jsonify({"error": "database busy", "detail": "数据更新中，请稍后重试"}),
-        503,
-        {"Retry-After": "10"},
-    )
+def _db_busy(e):
+    if any(hint in str(e).lower() for hint in ("could not set lock", "conflicting lock", "being used",
+                                               "file is already open in", "different configuration")):
+        return (
+            jsonify({"error": "database busy", "detail": "数据更新中，请稍后重试"}),
+            503,
+            {"Retry-After": "10"},
+        )
+    return internal_error(e)
 
 
 @app.teardown_appcontext
@@ -84,10 +165,13 @@ def _release_con(exc: BaseException | None) -> None:
     c = g.pop("_con", None)
     if c is not None:
         c.close()
+    watch = g.pop("_wdb", None)
+    if watch is not None:
+        watch.close()
 
 
 def _clean(v: Any) -> Any:
-    if isinstance(v, float) and math.isnan(v):
+    if isinstance(v, float) and not math.isfinite(v):
         return None
     return v
 
@@ -146,8 +230,9 @@ def _friendly_update_error(text: str) -> str:
         return "数据源尚未返回今日数据，请稍后重试"
     if "traceback" in low:
         return "更新脚本执行失败，请稍后重试"
-    clean = " ".join((text or "").split())
-    return (clean[:120] + "…") if len(clean) > 120 else (clean or "更新失败，请稍后重试")
+    if "timeout" in low or "timed out" in low:
+        return "更新超时，任务已中止，请检查本地更新日志"
+    return "更新失败，请检查本地更新日志后重试"
 
 
 def _run_step(args: list[str], stage: str, start: int, end: int) -> tuple[int, str]:
@@ -162,28 +247,37 @@ def _run_step(args: list[str], stage: str, start: int, end: int) -> tuple[int, s
         errors="replace",
         bufsize=1,
     )
+    timed_out = threading.Event()
+
+    def stop():
+        timed_out.set()
+        proc.kill()
+
+    timer = threading.Timer(2700, stop)
+    timer.daemon = True
+    timer.start()
     lines: list[str] = []
-    assert proc.stdout is not None
-    for raw in proc.stdout:
-        line = raw.rstrip("\r\n")
-        if not line:
-            continue
-        lines.append(line)
-        if len(lines) > 120:
-            lines.pop(0)
-        if line.startswith("[update]"):
-            if "last=" in line or "pending" in line:
-                _job_progress(14, stage, "发现待更新交易日")
-            elif "calendar" in line:
-                _job_progress(20, stage, "同步交易日历")
-            elif "inserted" in line:
-                _job_progress(38, stage, "正在写入行情")
-            elif "gates" in line or "quality" in line:
-                _job_progress(52, stage, "正在校验数据质量")
-        elif line.startswith("[marts]"):
-            _job_progress(min(end - 2, start + 3), stage, "正在重算指标")
-    code = proc.wait()
-    return code, "\n".join(lines)
+    try:
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            line = raw.rstrip("\r\n")
+            if not line:
+                continue
+            lines.append(line)
+            if len(lines) > 120:
+                lines.pop(0)
+            if line.startswith("[update]"):
+                _job_progress(35, "fetching", "正在更新并校验行情")
+            elif line.startswith("[marts]"):
+                _job_progress(65, "building", "正在重算指标")
+            elif line.startswith("[export]"):
+                _job_progress(95, "export", "正在生成离线文件")
+        code = proc.wait()
+    finally:
+        timer.cancel()
+        if proc.stdout is not None:
+            proc.stdout.close()
+    return (124, "update timeout") if timed_out.is_set() else (code, "\n".join(lines))
 
 
 def _status_trade_date() -> str | None:
@@ -198,32 +292,11 @@ def _status_trade_date() -> str | None:
 def _run_update_job() -> None:
     try:
         _job_set(state="running", progress=4, stage="preparing", message="准备更新数据")
-        code, out = _run_step([sys.executable, "-m", "pipeline.update_daily"], "fetching", 8, 52)
+        code, out = _run_step([sys.executable, "-m", "pipeline.release"], "fetching", 8, 97)
         if code != 0:
             raise UpdateError(out)
         if '"status": "skipped"' in out or "another update" in out:
             raise UpdateError("已有更新任务正在运行，请稍后再试")
-
-        _job_progress(58, "building", "正在重算指标")
-        code, out = _run_step([sys.executable, "-m", "pipeline.build_marts"], "building", 58, 86)
-        if code != 0:
-            raise UpdateError(out)
-
-        _job_progress(90, "status", "正在刷新状态")
-        code, out = _run_step([sys.executable, "-m", "pipeline.refresh_status"], "status", 90, 97)
-        if code != 0:
-            raise UpdateError(out)
-
-        try:
-            subprocess.run(
-                [sys.executable, "-m", "pipeline.alerts", "--clear"],
-                cwd=str(ROOT),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=30,
-            )
-        except Exception:
-            pass
 
         d = _status_trade_date()
         _job_set(
@@ -244,8 +317,10 @@ def _run_update_job() -> None:
         )
         try:
             from pipeline import alerts
-
-            alerts.write("update", msg)
+            # A rejected second updater must not overwrite the active publisher's
+            # alert/status outside its publication lock.
+            if "another update" not in str(exc).lower() and "already running" not in str(exc).lower():
+                alerts.write("update", msg)
         except Exception:
             pass
 
@@ -284,13 +359,11 @@ def update_status():
 
 def meta():
     base = one("SELECT min(trade_date) f, max(trade_date) d, count(*) n FROM mart_market_day")
-    n_stocks = one("SELECT count(*) n FROM mart_stock_latest")["n"]
-    status = {"status": "ok", "updated_at": None, "warnings": []}
+    n_stocks = one("SELECT n_valid n FROM mart_market_day ORDER BY trade_date DESC LIMIT 1").get("n", 0)
+    status = {"status": "unknown", "updated_at": None, "warnings": [], "sources": {}}
     p = META / "status.json"
     if p.exists():
         try:
-            import json
-
             status.update(json.loads(p.read_text(encoding="utf-8")))
         except Exception:
             pass
@@ -299,6 +372,8 @@ def meta():
     if ap.exists():
         try:
             alert = json.loads(ap.read_text(encoding="utf-8"))
+            if isinstance(alert, dict):
+                alert.pop("log", None)
         except Exception:
             alert = None
     return jsonify(
@@ -307,8 +382,9 @@ def meta():
             "last_trade_date": str(base["d"]) if base.get("d") else None,
             "n_days": base.get("n"),
             "n_stocks": n_stocks,
-            "source": "Tushare Pro",
-            "status": status.get("status", "ok"),
+            "source": ", ".join(sorted(set(status.get("sources", {}).values()))) or "unknown",
+            "sources": status.get("sources", {}),
+            "status": status.get("status", "unknown"),
             "updated_at": status.get("updated_at"),
             "warnings": status.get("warnings", []),
             "alert": alert,
@@ -321,6 +397,8 @@ def market_series():
     start = request.args.get("start")
     end = request.args.get("end")
     freq = request.args.get("freq", "day")
+    if freq not in ("day", "month"):
+        abort(400, "freq must be day or month")
     if freq == "month":
         return jsonify(
             rows(
@@ -348,6 +426,7 @@ def market_series():
 
 @app.get("/api/market/day/<d>")
 def market_day(d: str):
+    _date_arg(d)
     m = one("SELECT * FROM mart_market_day WHERE trade_date = ?::DATE", [d])
     if not m:
         abort(404, "no data for this date")
@@ -372,6 +451,7 @@ def market_day(d: str):
 
 @app.get("/api/distribution/<d>")
 def distribution(d: str):
+    _date_arg(d)
     bins = rows(
         """
         WITH f AS (
@@ -436,7 +516,12 @@ def sector_monthly():
 def stocks():
     d = request.args.get("date")
     sector = request.args.get("sector")
-    limit = int(request.args.get("limit", 400))
+    try:
+        limit = int(request.args.get("limit", 400))
+        if not 1 <= limit <= 10000:
+            raise ValueError
+    except ValueError:
+        abort(400, "limit must be an integer between 1 and 10000")
     return jsonify(
         rows(
             """
@@ -454,11 +539,13 @@ def stocks():
 
 @app.get("/api/stock/<code>")
 def stock_series(code: str):
+    _code_arg(code)
     start, end = request.args.get("start"), request.args.get("end")
     return jsonify(
         rows(
             """
-            SELECT trade_date::VARCHAR AS trade_date, close, adj_close, ret, circ_mv, turnover_rate,
+            SELECT trade_date::VARCHAR AS trade_date, open, high, low, close, vol,
+                   adj_close, ret, circ_mv, turnover_rate,
                    amount * 1000 AS amount, sw_l1, name
             FROM feat_stock
             WHERE ts_code = ?
@@ -472,7 +559,11 @@ def stock_series(code: str):
 
 
 def wdb() -> sqlite3.Connection:
+    existing = getattr(g, "_wdb", None)
+    if existing is not None:
+        return existing
     c = sqlite3.connect(DB)
+    g._wdb = c
     c.execute(
         "CREATE TABLE IF NOT EXISTS watchlist (ts_code TEXT PRIMARY KEY, shares REAL DEFAULT 0, cost REAL DEFAULT 0, added_at TEXT)"
     )
@@ -492,17 +583,23 @@ def watchlist():
         for r in c.execute("SELECT ts_code, shares, cost FROM watchlist ORDER BY added_at").fetchall()
     }
     c.close()
+    g.pop("_wdb", None)
     if not pos:
         return jsonify([])
     codes = list(pos.keys())
     ph = ",".join("?" * len(codes))
     data = rows(
         f"""
-        SELECT ts_code, name, sw_l1, market, trade_date, close, ret, circ_mv, total_mv,
-               turnover_rate, pe_ttm, pb, amount, is_limit_up, is_limit_down
+        SELECT *
         FROM mart_stock_latest WHERE ts_code IN ({ph})
         """,
         codes,
+    )
+    present = {r["ts_code"] for r in data}
+    data.extend(
+        {"ts_code": code, "name": code, "close": None, "ret": None,
+         "trade_date": None, "quote_date": None, "quote_missing": True}
+        for code in codes if code not in present
     )
     for r in data:
         p = pos.get(r["ts_code"], {})
@@ -513,43 +610,50 @@ def watchlist():
 
 @app.post("/api/watchlist")
 def add_watch():
-    payload = request.get_json(silent=True) or {}
-    code = str(payload.get("ts_code", "")).strip()
-    if not code:
-        abort(400, "ts_code required")
-    shares = float(payload.get("shares") or 0)
-    cost = float(payload.get("cost") or 0)
+    payload = _payload()
+    code = _code_arg(str(payload.get("ts_code", "")).strip())
+    shares = _quantity(payload.get("shares", 0), "shares")
+    cost = _quantity(payload.get("cost", 0), "cost")
     c = wdb()
     c.execute(
-        "INSERT OR IGNORE INTO watchlist (ts_code, shares, cost, added_at) VALUES (?, ?, ?, ?)",
+        """INSERT INTO watchlist (ts_code, shares, cost, added_at) VALUES (?, ?, ?, ?)
+           ON CONFLICT(ts_code) DO UPDATE SET shares=excluded.shares, cost=excluded.cost""",
         (code, shares, cost, datetime.now().isoformat()),
     )
-    if shares or cost:
-        c.execute("UPDATE watchlist SET shares = ?, cost = ? WHERE ts_code = ?", (shares, cost, code))
     c.commit()
     c.close()
+    g.pop("_wdb", None)
     return jsonify({"ok": True})
 
 
 @app.patch("/api/watchlist/<code>")
 def patch_watch(code: str):
-    payload = request.get_json(silent=True) or {}
+    _code_arg(code)
+    payload = _payload()
+    patch = {key: _quantity(payload[key], key) for key in ("shares", "cost") if key in payload}
+    if not patch:
+        abort(400, "shares or cost required")
     c = wdb()
-    if "shares" in payload:
-        c.execute("UPDATE watchlist SET shares = ? WHERE ts_code = ?", (float(payload["shares"] or 0), code))
-    if "cost" in payload:
-        c.execute("UPDATE watchlist SET cost = ? WHERE ts_code = ?", (float(payload["cost"] or 0), code))
+    if not c.execute("SELECT 1 FROM watchlist WHERE ts_code=?", (code,)).fetchone():
+        abort(404, "watch item not found")
+    if "shares" in patch:
+        c.execute("UPDATE watchlist SET shares = ? WHERE ts_code = ?", (patch["shares"], code))
+    if "cost" in patch:
+        c.execute("UPDATE watchlist SET cost = ? WHERE ts_code = ?", (patch["cost"], code))
     c.commit()
     c.close()
+    g.pop("_wdb", None)
     return jsonify({"ok": True})
 
 
 @app.delete("/api/watchlist/<code>")
 def del_watch(code: str):
+    _code_arg(code)
     c = wdb()
     c.execute("DELETE FROM watchlist WHERE ts_code = ?", (code,))
     c.commit()
     c.close()
+    g.pop("_wdb", None)
     return jsonify({"ok": True})
 
 
@@ -630,23 +734,27 @@ def reconcile():
 
 @app.get("/api/valuation/<code>")
 def valuation(code: str):
+    _code_arg(code)
     data = rows(
         """
-        SELECT pe_ttm
+        SELECT trade_date, pe_ttm
         FROM feat_stock
         WHERE ts_code = ?
           AND trade_date >= (SELECT max(trade_date) - INTERVAL 3 YEAR FROM feat_stock)
-          AND pe_ttm > 0
         ORDER BY trade_date
         """,
         [code],
     )
     if not data:
         return jsonify({})
-    vals = [r["pe_ttm"] for r in data]
-    last = vals[-1]
+    latest = data[-1]
+    last = latest["pe_ttm"]
+    if last is None or not math.isfinite(last) or last <= 0:
+        return jsonify({"pe": None, "pct": None, "n": 0, "quote_date": latest["trade_date"]})
+    vals = [r["pe_ttm"] for r in data if r["pe_ttm"] is not None and math.isfinite(r["pe_ttm"]) and r["pe_ttm"] > 0]
     return jsonify(
-        {"pe": round(last, 2), "pct": round(100 * sum(v <= last for v in vals) / len(vals)), "n": len(vals)}
+        {"pe": round(last, 2), "pct": round(100 * sum(v <= last for v in vals) / len(vals)),
+         "n": len(vals), "quote_date": latest["trade_date"]}
     )
 
 
@@ -662,11 +770,8 @@ def quality():
 
 @app.get("/api/health")
 def health():
-    try:
-        n = one("SELECT count(*) n FROM mart_market_day")["n"]
-        return jsonify({"ok": True, "rows": n})
-    except Exception as e:  # pragma: no cover
-        return jsonify({"ok": False, "error": str(e)}), 500
+    n = one("SELECT count(*) n FROM mart_market_day")["n"]
+    return jsonify({"ok": True, "rows": n})
 
 
 # ------------------------------------------------------------------ static SPA

@@ -1,6 +1,7 @@
 /* 数据层：既支持 Flask API，也支持「单文件静态导出」模式。
  * 静态模式下 window.__BL_DATA__ 由 export_static.py 注入，所有请求走本地内存。 */
 
+import { finiteQuantity, validCode } from "./holdings";
 const BASE = "";
 
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
@@ -23,7 +24,7 @@ export interface Meta {
   n_stocks: number;
   n_days: number;
   source: string;
-  status: "ok" | "stale" | "failed";
+  status: "ok" | "stale" | "failed" | "unknown";
   warnings: string[];
   alert?: { time: string; stage: string; message: string; log?: string | null } | null;
 }
@@ -118,6 +119,10 @@ export interface StockRow {
   sw_l1: string;
   market: string;
   trade_date: string;
+  quote_date?: string | null;
+  pre_close?: number | null;
+  is_stale?: boolean;
+  quote_missing?: boolean;
   close: number;
   ret: number;
   circ_mv: number;
@@ -245,6 +250,7 @@ export interface QualityReport {
 export interface StaticPayload {
   meta: Meta;
   market: MarketDay[];
+  market_monthly?: MarketDay[];
   sectors: Record<string, SectorDay[]>;
   sector_monthly: SectorMonth[];
   rotation?: RotationDay[];
@@ -272,32 +278,8 @@ export const isStatic = !!S;
 
 const ok = <T>(v: T) => Promise.resolve(v);
 
-function monthAgg(rows: MarketDay[]): MarketDay[] {
-  const g = new Map<string, MarketDay[]>();
-  rows.forEach((r) => {
-    const k = r.trade_date.slice(0, 7) + "-01";
-    if (!g.has(k)) g.set(k, []);
-    g.get(k)!.push(r);
-  });
-  return [...g.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([k, rs]) => {
-      const n = rs.length;
-      const mean = (f: (r: MarketDay) => number) => rs.reduce((a, r) => a + f(r), 0) / n;
-      return {
-        ...rs[rs.length - 1],
-        trade_date: k,
-        n_valid: rs.reduce((a, r) => a + r.n_valid, 0),
-        breadth: mean((r) => r.breadth),
-        ew_ret: mean((r) => r.ew_ret),
-        cw_ret: mean((r) => r.cw_ret),
-        med_ret: mean((r) => r.med_ret),
-        csd: mean((r) => r.csd),
-        amount: rs.reduce((a, r) => a + r.amount, 0),
-        hhi: mean((r) => r.hhi),
-        top10_share: mean((r) => r.top10_share),
-      } as MarketDay;
-    });
+function unavailable(what: string): never {
+  throw new Error(`此离线包未包含所选${what} / Not included in this offline export`);
 }
 
 const inRange = (d: string, start?: string, end?: string) =>
@@ -315,12 +297,12 @@ function readWatch(): WatchItem[] {
   try {
     const raw = JSON.parse(localStorage.getItem(WATCH_KEY) || "[]");
     return (Array.isArray(raw) ? raw : []).map((x: unknown) => {
-      if (typeof x === "string") return { ts_code: x, shares: 0, cost: 0 };
+      if (typeof x === "string") return { ts_code: validCode(x), shares: 0, cost: 0 };
       const o = x as WatchItem;
-      return { ts_code: o.ts_code, shares: Number(o.shares) || 0, cost: Number(o.cost) || 0 };
+      return { ts_code: validCode(o.ts_code), shares: finiteQuantity(o.shares ?? 0), cost: finiteQuantity(o.cost ?? 0) };
     });
   } catch {
-    return [];
+    throw new Error("本地持仓数据无效，请先备份后修正 / Invalid saved positions; back up and repair them");
   }
 }
 
@@ -341,35 +323,30 @@ export const api = {
 
   distribution: (date: string) =>
     S
-      ? ok(
-          S.distribution[date] ?? {
-            bins: [],
-            stats: { n: 0, med: 0, p05: 0, p25: 0, p75: 0, p95: 0, mean: 0, sd: 0 },
-          },
-        )
+      ? ok(S.distribution[date] ?? unavailable("日期的收益分布"))
       : get<Distribution>(`/api/distribution/${date}`),
 
   marketSeries: (start?: string, end?: string, freq: "day" | "month" = "day") => {
     if (S) {
-      const rows = S.market.filter((r) => inRange(r.trade_date, start, end));
-      return ok(freq === "month" ? monthAgg(rows) : rows);
+      const source = freq === "month" ? (S.market_monthly ?? unavailable("月度数据，请重新导出")) : S.market;
+      return ok(source.filter((r) => inRange(r.trade_date, start, end)));
     }
     return get<MarketDay[]>("/api/market/series", { start, end, freq });
   },
 
   marketDay: (date: string) => {
     if (S) {
-      const row = S.market.find((r) => r.trade_date === date) ?? S.market[S.market.length - 1];
+      const row = S.market.find((r) => r.trade_date === date) ?? unavailable("市场日期");
       return ok({
         ...row,
-        contributors: S.contrib[date] ?? [],
-        sectors: S.sectors[date] ?? [],
+        contributors: S.contrib[date] ?? unavailable("日期的贡献明细"),
+        sectors: S.sectors[date] ?? unavailable("日期的行业明细"),
       } as MarketDayDetail);
     }
     return get<MarketDayDetail>(`/api/market/day/${date}`);
   },
 
-  sectors: (date: string) => (S ? ok(S.sectors[date] ?? []) : get<SectorDay[]>("/api/sectors", { date })),
+  sectors: (date: string) => (S ? ok(S.sectors[date] ?? unavailable("日期的行业明细")) : get<SectorDay[]>("/api/sectors", { date })),
 
   sectorSeries: (start?: string, end?: string) => {
     if (S) {
@@ -408,7 +385,8 @@ export const api = {
 
   stocks: (date: string, sector?: string, limit = 6000) => {
     if (S) {
-      const rows = S.stocks.filter((r) => (!sector ? true : r.sw_l1 === sector));
+      if (date !== S.meta.last_trade_date) unavailable("日期的个股数据");
+      const rows = S.stocks.filter((r) => r.trade_date === date && (!sector || r.sw_l1 === sector));
       return ok(rows.slice(0, limit));
     }
     return get<StockRow[]>("/api/stocks", { date, sector, limit });
@@ -423,7 +401,7 @@ export const api = {
     if (S) {
       const raw = S.stock_series?.[code] ?? [];
       return ok(
-        raw.map(([d, o, h, l, c, v]) => ({ trade_date: d, open: o, high: h, low: l, close: c, vol: v })),
+        raw.filter(([d]) => inRange(d, start, end)).map(([d, o, h, l, c, v]) => ({ trade_date: d, open: o, high: h, low: l, close: c, vol: v })),
       );
     }
     return get<{ trade_date: string; open: number; high: number; low: number; close: number; vol: number }[]>(
@@ -435,20 +413,20 @@ export const api = {
   watchlist: () => {
     if (S) {
       const items = readWatch();
-      const map = new Map(items.map((i) => [i.ts_code, i]));
+      const pool = new Map(S.watch_pool.map(r => [r.ts_code, r]));
       return ok(
-        S.watch_pool
-          .filter((r) => map.has(r.ts_code))
-          .map((r) => ({ ...r, shares: map.get(r.ts_code)!.shares, cost: map.get(r.ts_code)!.cost })),
+        items.map(i => ({ ...(pool.get(i.ts_code) ?? {ts_code:i.ts_code, name:i.ts_code,
+          sw_l1:"", market:"", close:null, ret:null, trade_date:null, quote_missing:true}), ...i })) as StockRow[],
       );
     }
     return get<StockRow[]>("/api/watchlist");
   },
 
   addWatch: (code: string, shares = 0, cost = 0) => {
+    validCode(code); finiteQuantity(shares); finiteQuantity(cost);
     if (S) {
-      const items = readWatch();
-      if (!items.some((i) => i.ts_code === code)) items.push({ ts_code: code, shares, cost });
+      const items = readWatch().filter(i => i.ts_code !== code);
+      items.push({ ts_code: code, shares, cost });
       writeWatch(items);
       return ok({ ok: true });
     }
@@ -456,11 +434,15 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ts_code: code, shares, cost }),
-    }).then((r) => r.json());
+    }).then(checkedJson);
   },
 
   updateWatch: (code: string, patch: { shares?: number; cost?: number }) => {
+    validCode(code);
+    if (!Object.keys(patch).length) throw new Error("shares or cost required");
+    Object.values(patch).forEach(finiteQuantity);
     if (S) {
+      if (!readWatch().some(i => i.ts_code === code)) throw new Error("Watch item not found");
       const items = readWatch().map((i) => (i.ts_code === code ? { ...i, ...patch } : i));
       writeWatch(items);
       return ok({ ok: true });
@@ -469,14 +451,20 @@ export const api = {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
-    }).then((r) => r.json());
+    }).then(checkedJson);
   },
 
   removeWatch: (code: string) => {
+    validCode(code);
     if (S) {
       writeWatch(readWatch().filter((c) => c.ts_code !== code));
       return ok({ ok: true });
     }
-    return fetch(`/api/watchlist/${encodeURIComponent(code)}`, { method: "DELETE" }).then((r) => r.json());
+    return fetch(`/api/watchlist/${encodeURIComponent(code)}`, { method: "DELETE" }).then(checkedJson);
   },
 };
+
+async function checkedJson(response: Response) {
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json();
+}

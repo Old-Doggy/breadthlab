@@ -1,5 +1,6 @@
 ﻿# 注册计划任务：每个交易日 17:35 增量更新；每周日 02:00 全量重算
 $ErrorActionPreference = "Stop"
+# Times below use the host timezone and weekdays, not the exchange calendar.
 $root = Split-Path -Parent $PSScriptRoot
 $updateScript = Join-Path $root "scripts\update.ps1"
 $rebuildScript = Join-Path $root "scripts\rebuild.ps1"

@@ -3,6 +3,10 @@ data/
 *.duckdb
 *.duckdb.wal
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 logs/
 
 # python
@@ -16,6 +20,8 @@ __pycache__/
 node_modules/
 frontend/dist/
 frontend/.vite/
+.playwright-cli/
+output/playwright/
 
 # os
 Thumbs.db

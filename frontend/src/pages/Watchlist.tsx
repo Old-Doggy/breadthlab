@@ -12,9 +12,10 @@ import { PageHead } from "../components/PageHead";
 import { Kpi } from "../components/Kpi";
 import EChart from "../components/EChart";
 import { contributionChart, sectorExposureChart, type BookRow } from "../lib/charts5";
+import { holdingMetrics, portfolioReturn, parseWatchCsv, finiteQuantity } from "../lib/holdings";
 
 type Row = StockRow & { shares: number; cost: number };
-type Enriched = Row & { mv: number; pnl: number; pnlPct: number; today: number };
+type Enriched = Row & ReturnType<typeof holdingMetrics>;
 
 const SAMPLE: [string, number, number][] = [
   ["600519.SH", 100, 1650],
@@ -44,8 +45,9 @@ export default function Watchlist() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<Record<string, { shares?: string; cost?: string }>>({});
   const [seeding, setSeeding] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
-  const { data } = useQuery({ queryKey: ["watchlist"], queryFn: api.watchlist });
+  const { data, isPending, error, refetch } = useQuery({ queryKey: ["watchlist"], queryFn: api.watchlist });
   const { data: market } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
   const rows = (data ?? []) as Row[];
   const last = market?.[market.length - 1];
@@ -53,13 +55,7 @@ export default function Watchlist() {
   const enriched = useMemo<Enriched[]>(
     () =>
       rows.map((r) => {
-        const shares = Number(r.shares) || 0;
-        const cost = Number(r.cost) || 0;
-        const mv = shares * (r.close || 0);
-        const pnl = cost > 0 ? (r.close - cost) * shares : 0;
-        const pnlPct = cost > 0 ? r.close / cost - 1 : 0;
-        const today = shares * (r.close || 0) * (r.ret || 0);
-        return { ...r, shares, cost, mv, pnl, pnlPct, today };
+        return { ...r, ...holdingMetrics(r) };
       }),
     [rows],
   );
@@ -68,14 +64,16 @@ export default function Watchlist() {
   const cny = (v: number) => `¥${Math.round(v).toLocaleString("en-US")}`;
 
   const totalMv = enriched.reduce((a, r) => a + r.mv, 0);
+  const missingValuation = enriched.some(r => r.shares > 0 && r.quoteUnknown);
   const totalCost = enriched.reduce((a, r) => a + r.cost * r.shares, 0);
   const totalPnl = enriched.reduce((a, r) => a + r.pnl, 0);
-  const todayPnl = enriched.reduce((a, r) => a + r.today, 0);
+  const incomplete = enriched.some(r => r.shares > 0 && (r.quoteUnknown || r.is_stale));
+  const todayPnl = enriched.some(r => r.today === null) ? null : enriched.reduce((a, r) => a + r.today!, 0);
   const invested = enriched.filter((r) => r.shares > 0);
   const portRet = invested.length
-    ? invested.reduce((a, r) => a + r.ret * (r.mv / (totalMv || 1)), 0)
+    ? portfolioReturn(enriched)
     : enriched.length
-      ? enriched.reduce((a, r) => a + r.ret, 0) / enriched.length
+      ? enriched.some(r => r.quoteUnknown || r.is_stale) ? null : enriched.reduce((a, r) => a + r.ret, 0) / enriched.length
       : 0;
   const up = enriched.filter((r) => r.ret > 0).length;
   const topWeight = totalMv > 0 ? Math.max(...enriched.map((r) => r.mv), 0) / totalMv : 0;
@@ -90,15 +88,16 @@ export default function Watchlist() {
   );
 
   const save = async (code: string, patch: { shares?: number; cost?: number }) => {
-    await api.updateWatch(code, patch);
-    qc.invalidateQueries({ queryKey: ["watchlist"] });
+    try { await api.updateWatch(code, patch); setOperationError(null);
+      qc.invalidateQueries({ queryKey: ["watchlist"] }); }
+    catch (e) { setOperationError(String(e)); }
   };
 
   const commit = (r: Row, field: "shares" | "cost") => {
     const raw = editing[r.ts_code]?.[field];
     if (raw === undefined) return;
-    const v = Number(raw);
-    if (!Number.isNaN(v)) void save(r.ts_code, { [field]: v });
+    try { const v = finiteQuantity(raw); void save(r.ts_code, { [field]: v }); }
+    catch (e) { setOperationError(String(e)); }
     setEditing((s) => ({ ...s, [r.ts_code]: { ...s[r.ts_code], [field]: undefined } }));
   };
 
@@ -113,21 +112,17 @@ export default function Watchlist() {
   };
 
   const importCsv = async (file: File) => {
-    const text = await file.text();
-    for (const line of text.split(/\r?\n/).slice(1)) {
-      const [code, shares, cost] = line.split(",").map((s) => s.trim());
-      if (!code) continue;
-      const s = Number(shares) || 0;
-      const c = Number(cost) || 0;
-      if (rows.some((r) => r.ts_code === code)) await api.updateWatch(code, { shares: s, cost: c });
-      else await api.addWatch(code, s, c);
-    }
-    qc.invalidateQueries({ queryKey: ["watchlist"] });
+    try { const items = parseWatchCsv(await file.text());
+      for (const i of items) await api.addWatch(i.ts_code, i.shares, i.cost);
+      setOperationError(null);
+    } catch(e) { setOperationError(String(e)); }
+    finally { qc.invalidateQueries({ queryKey: ["watchlist"] }); }
   };
 
   const remove = async (code: string) => {
-    await api.removeWatch(code);
-    qc.invalidateQueries({ queryKey: ["watchlist"] });
+    try { await api.removeWatch(code); setOperationError(null);
+      qc.invalidateQueries({ queryKey: ["watchlist"] }); }
+    catch(e) { setOperationError(String(e)); }
   };
 
   const loadSample = async () => {
@@ -135,7 +130,7 @@ export default function Watchlist() {
     try {
       for (const [code, shares, cost] of SAMPLE) await api.addWatch(code, shares, cost);
       qc.invalidateQueries({ queryKey: ["watchlist"] });
-    } finally {
+    } catch(e) { setOperationError(String(e)); } finally {
       setSeeding(false);
     }
   };
@@ -183,7 +178,9 @@ export default function Watchlist() {
         }
       />
 
-      {!rows.length ? (
+      {(error || operationError) && <div role="alert" className="card p-4 text-[var(--warn)]">{zh ? "持仓操作或加载未完成" : "Positions could not be loaded or saved"} · {operationError ?? String(error)} <button onClick={() => refetch()}>{zh ? "重试" : "Retry"}</button></div>}
+      {incomplete && <div role="status" className="card p-3 text-[var(--warn)]">{zh ? "部分持仓缺报价或报价已过期：旧报价仅供估值，不代表可成交价格；组合今日收益暂不可用。" : "Some quotes are missing or stale. Last quotes are valuation references, not executable prices; today's portfolio return is unavailable."}</div>}
+      {isPending ? <div className="card p-6">{zh ? "正在读取持仓…" : "Loading positions…"}</div> : !rows.length ? (
         <div className="card overflow-hidden">
           <div className="grid lg:grid-cols-[1.5fr_1fr]">
             <div className="p-5 md:p-8">
@@ -272,19 +269,19 @@ export default function Watchlist() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <Kpi label={zh ? "总市值" : "Market value"} value={money(totalMv)} sub={zh ? `${invested.length} 只有股数` : `${invested.length} with shares`} hint={zh ? "现价 × 股数；未填股数不计入市值" : "Close × shares"} />
+            <Kpi label={zh ? "总市值" : "Market value"} value={money(missingValuation ? null : totalMv)} sub={zh ? `${invested.length} 只有股数` : `${invested.length} with shares`} hint={zh ? "现价 × 股数；缺报价时组合估值未知" : "Close × shares; unavailable if any quote is missing"} />
             <Kpi label={zh ? "总成本" : "Cost"} value={money(totalCost)} sub={zh ? "按持仓成本汇总" : "At cost"} hint={zh ? "Σ 成本 × 股数" : "Σ cost × shares"} />
             <Kpi
               label={zh ? "浮动盈亏" : "P&L"}
-              value={`${totalPnl >= 0 ? "+" : "−"}${money(Math.abs(totalPnl))}`}
+              value={missingValuation ? "—" : `${totalPnl >= 0 ? "+" : "−"}${money(Math.abs(totalPnl))}`}
               tone={totalPnl >= 0 ? "up" : "down"}
-              sub={totalCost > 0 ? `${zh ? "收益率" : "return"} ${pct(totalPnl / totalCost)}` : "—"}
+              sub={!missingValuation && totalCost > 0 ? `${zh ? "收益率" : "return"} ${pct(totalPnl / totalCost)}` : "—"}
             />
             <Kpi
               label={zh ? "今日盈亏" : "Today P&L"}
-              value={`${todayPnl >= 0 ? "+" : "−"}${money(Math.abs(todayPnl))}`}
-              tone={todayPnl >= 0 ? "up" : "down"}
-              sub={zh ? "按今日涨跌估算" : "Mark-to-market today"}
+              value={todayPnl === null ? "—" : `${todayPnl >= 0 ? "+" : "−"}${money(Math.abs(todayPnl))}`}
+              tone={(todayPnl ?? 0) >= 0 ? "up" : "down"}
+              sub={zh ? "按前收盘参考价估算" : "Mark-to-market today"}
             />
             <Kpi label={zh ? "组合 vs 市场" : "Book vs market"} value={pct(portRet)} tone={trendClass(portRet) as "up" | "down" | "neutral"} sub={`${zh ? "等权市场" : "EW market"} ${pct(last?.ew_ret ?? null)}`} />
             <Kpi label={zh ? "最大单票" : "Top holding"} value={ratio(topWeight, 0)} sub={zh ? "集中度参考" : "Concentration"} hint={zh ? "最大持仓市值 / 组合总市值" : "Largest position / total MV"} />
@@ -319,8 +316,8 @@ export default function Watchlist() {
                 index="02"
                 title={zh ? "今日盈亏贡献" : "Today's P&L contribution"}
                 subtitle={zh ? "个股对组合今日盈亏的绝对贡献 · Top 10" : "Per-name contribution to today's book P&L · top 10"}
-                right={<span className={`pill ${todayPnl >= 0 ? "text-[var(--up)]" : "text-[var(--down)]"}`}>{todayPnl >= 0 ? "+" : "−"}{money(Math.abs(todayPnl))}</span>}
-                prov={zh ? "股数 × 现价 × 当日涨跌幅；未填股数不计入" : "Shares × close × daily return"}
+                right={<span className={`pill ${(todayPnl ?? 0) >= 0 ? "text-[var(--up)]" : "text-[var(--down)]"}`}>{todayPnl === null ? "—" : `${todayPnl >= 0 ? "+" : "−"}${money(Math.abs(todayPnl))}`}</span>}
+                prov={zh ? "股数 ×（收盘价 − 前收盘参考价）；假设股数不变，不含交易及现金分红" : "Shares × (close − previous reference close); unchanged shares, excluding trades and cash dividends"}
                 padded={false}
                 bodyClass="pt-0"
               >
@@ -375,7 +372,7 @@ export default function Watchlist() {
                       <tr key={r.ts_code} className="border-t border-[var(--border)] hover:bg-[var(--surface-2)]">
                         <td className="py-[8px] pl-2">
                           <div className="text-[13px] text-[var(--text)]">{r.name}</div>
-                          <div className="mono text-[10.5px] text-[var(--faint)]">{r.ts_code} · {r.sw_l1}</div>
+                          <div className="mono text-[10.5px] text-[var(--faint)]">{r.ts_code} · {r.sw_l1}</div>{(r.is_stale || r.quote_missing) && <div className="text-[10px] text-[var(--warn)]">{zh ? "最后报价" : "Last quote"} {r.quote_date ?? "—"}</div>}
                         </td>
                         <td className="text-right">
                           <input
@@ -397,11 +394,11 @@ export default function Watchlist() {
                             inputMode="decimal"
                           />
                         </td>
-                        <td className="mono text-right text-[var(--text-2)]">{r.close?.toFixed(2)}</td>
+                        <td className="mono text-right text-[var(--text-2)]">{r.close?.toFixed(2) ?? "—"}</td>
                         <td className={`mono text-right ${trendClass(r.ret)}`}>{pct(r.ret)}</td>
                         <td className="mono text-right text-[var(--text-2)]">{r.mv ? money(r.mv) : "—"}</td>
                         <td className={`mono text-right ${trendClass(r.pnl)}`}>
-                          {r.cost > 0 ? `${money(r.pnl)} (${pct(r.pnlPct)})` : "—"}
+                          {r.cost > 0 && !r.quoteUnknown ? `${money(r.pnl)} (${pct(r.pnlPct)})` : "—"}
                         </td>
                         <td className="mono text-right text-[var(--text-2)]">{weight ? ratio(weight, 0) : "—"}</td>
                         <td className={`mono text-right ${trendClass(r.today)}`}>{r.shares ? money(r.today) : "—"}</td>

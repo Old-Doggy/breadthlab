@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-12",
+  "frontend_tests": {
+    "failed": 0,
+    "passed": 32,
+    "skipped": 0
+  },
+  "python_tests": {
+    "failed": 0,
+    "passed": 121,
+    "skipped": 0
+  },
+  "npm_audit": {
+    "vulnerabilities": 0,
+    "registry": "https://registry.npmjs.org"
+  },
+  "python": "3.12.16",
+  "clean_npm_ci": "127 packages",
+  "vite_build": "passed",
+  "clean_python_install": "passed",
+  "pip_audit": "no known vulnerabilities",
+  "pip_check": "passed",
+  "node": "24.15.0",
+  "ruff": "passed",
+  "typecheck": "passed",
+  "export_bytes": 60763473,
+  "scope": "Isolated data copy only; remote CI and production cutover not executed"
+}

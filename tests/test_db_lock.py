@@ -8,7 +8,7 @@ import duckdb
 
 from pipeline import db, settings
 from pathlib import Path
-TMP = Path(__file__).resolve().parents[1] / "data" / "tmp_tests"
+TMP = settings.DATA / "tmp_tests"
 
 
 def test_connect_wait_blocks_then_succeeds(monkeypatch):

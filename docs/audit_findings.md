@@ -1,5 +1,7 @@
 # 数据审计结论
 
+> 历史审计记录，不能作为当前发布许可。2026-11-12 终审确认原检查含自比、检查对象错位及前端遗漏；本轮修复范围和未解决问题见 [最终交付报告](release_completion_report.md)。下文“53项通过”“两处均已修复”仅保留历史上下文，不代表全站正确。
+
 审计对象：`mart_market_day`、`mart_sector_day`、`mart_sector_month`、`mart_stock_latest`、静态 payload。
 方法：不信任现有 mart，从 `core_stock_day` / `feat_stock` 原始行独立重算；再用 akshare 抽样交叉验证；最后做批量一致性比对。
 脚本：`scripts/audit_all.py`；明细：`docs/audit_report.md`（53 项检查全部通过）。

@@ -1,8 +1,9 @@
 import type { MarketDay } from "./api";
 
-export type RegimeKey = "broad_up" | "concentrated_up" | "mixed" | "broad_down";
+export type RegimeKey = "broad_up" | "concentrated_up" | "mixed" | "broad_down" | "unknown";
 
 export const regimeOf = (m: Pick<MarketDay, "ew_ret" | "breadth">): RegimeKey => {
+  if (m.breadth == null || !Number.isFinite(m.breadth) || !Number.isFinite(m.ew_ret)) return "unknown";
   if (m.ew_ret > 0) return m.breadth >= 0.5 ? "broad_up" : "concentrated_up";
   return m.breadth >= 0.5 ? "mixed" : "broad_down";
 };
@@ -13,39 +14,30 @@ export const regimeLabel = (key: RegimeKey, lang: string): string => {
     concentrated_up: "集中上涨",
     mixed: "结构分化",
     broad_down: "普跌",
+    unknown: "未知",
   };
   const en: Record<RegimeKey, string> = {
     broad_up: "Broad rally",
     concentrated_up: "Narrow rally",
     mixed: "Divergent",
     broad_down: "Broad selloff",
+    unknown: "Unknown",
   };
   return (lang === "en" ? en : zh)[key];
 };
 
-/** 为 hero 区生成一句人话结论。 */
+/** Describe measured breadth and returns without inferring index attribution. */
 export function verdict(m: MarketDay, lang: string): string {
+  if (m.breadth == null || !Number.isFinite(m.breadth) || !Number.isFinite(m.ew_ret))
+    return lang === "en" ? "Breadth or return is unavailable; no regime conclusion." : "广度或收益不可用，暂不判断市场状态。";
   const b = Math.round(m.breadth * 100);
-  const idx = ((m.hs300_ret ?? 0) * 100).toFixed(2);
-  const top = Math.round((m.top10_share || 0) * 100);
-  if (lang === "en") {
-    if (m.ew_ret > 0 && m.breadth < 0.5)
-      return `CSI 300 ${idx > "0" ? "+" : ""}${idx}% but only ${b}% of stocks rose — the gain was carried by a handful of heavyweights (top 10 ≈ ${top}% of the move).`;
-    if (m.ew_ret < 0 && m.breadth >= 0.5)
-      return `The index fell ${idx}% while ${b}% of stocks actually rose — the drag came from large caps, not the broad tape.`;
-    if (m.ew_ret < 0 && m.breadth < 0.5)
-      return `Broad selloff: only ${b}% of stocks advanced and the equal-weight market fell ${(m.ew_ret * 100).toFixed(2)}%.`;
-    return `Broad participation: ${b}% of stocks advanced with an equal-weight return of ${(m.ew_ret * 100).toFixed(2)}%.`;
-  }
-  if (m.ew_ret > 0 && m.breadth < 0.5)
-    return `沪深300 收涨 ${idx}%，但只有 ${b}% 的股票上涨——涨幅集中在少数权重股，Top10 贡献了 ${top}% 的指数涨跌。`;
-  if (m.ew_ret < 0 && m.breadth >= 0.5)
-    return `指数下跌 ${idx}%，但 ${b}% 的股票其实在涨——拖累来自大市值，而不是全市场。`;
-  if (m.ew_ret < 0 && m.breadth < 0.5)
-    return `普跌：仅 ${b}% 的股票上涨，等权收益 ${(m.ew_ret * 100).toFixed(2)}%，下跌具有广泛参与。`;
-  return `普涨：${b}% 的股票上涨，等权收益 ${(m.ew_ret * 100).toFixed(2)}%，上涨具备广泛参与。`;
+  const ew = (m.ew_ret * 100).toFixed(2);
+  const idx = m.hs300_ret == null ? (lang === "en" ? "unavailable" : "缺失") : `${(m.hs300_ret * 100).toFixed(2)}%`;
+  const label = regimeLabel(regimeOf(m), lang);
+  return lang === "en"
+    ? `${label}: ${b}% of advancing/declining stocks advanced; equal-weight return ${ew}%; CSI 300 ${idx}.`
+    : `${label}：上涨占涨跌家数的 ${b}%，等权收益 ${ew}%；沪深300 ${idx}。`;
 }
-
 export const quadrants = [
   { key: "broad_up", zh: "普涨", en: "Broad rally", color: "rgba(35,181,125,.05)" },
   { key: "concentrated_up", zh: "集中上涨", en: "Narrow rally", color: "rgba(232,163,61,.05)" },
@@ -53,23 +45,11 @@ export const quadrants = [
   { key: "broad_down", zh: "普跌", en: "Broad selloff", color: "rgba(240,85,90,.05)" },
 ];
 
-/** 页面级结论句：短、无句号、用于衬线大标题。 */
+/** Short page heading based on market breadth and equal-weight return. */
 export function headline(m: Pick<MarketDay, "ew_ret" | "breadth" | "hs300_ret">, lang = "zh"): string {
+  if (m.breadth == null || !Number.isFinite(m.breadth) || !Number.isFinite(m.ew_ret))
+    return lang === "en" ? "Market breadth is unavailable" : "市场广度暂不可用";
   const b = Math.round(m.breadth * 100);
-  const idx = (m.hs300_ret ?? 0) * 100;
-  const quiet = Math.abs(idx) < 0.25;
-  if (lang === "en") {
-    if (m.ew_ret > 0 && quiet) return `The index barely moved — ${b}% of stocks rose`;
-    if (m.ew_ret > 0 && m.breadth >= 0.5) return `${b}% of stocks are rising`;
-    if (m.ew_ret > 0 && m.breadth < 0.5) return `The index is up, but only ${b}% of stocks joined`;
-    if (m.ew_ret < 0 && m.breadth >= 0.5) return `The index is down, most stocks are up`;
-    if (m.ew_ret < 0 && m.breadth < 0.5) return `Broad selloff — only ${b}% advanced`;
-    return `Split tape — ${b}% of stocks are up`;
-  }
-  if (m.ew_ret > 0 && quiet) return `指数几乎没动，${b}% 的股票在涨`;
-  if (m.ew_ret > 0 && m.breadth >= 0.5) return `普涨：${b}% 的股票在涨`;
-  if (m.ew_ret > 0 && m.breadth < 0.5) return `指数在涨，但只有 ${b}% 的股票跟上了`;
-  if (m.ew_ret < 0 && m.breadth >= 0.5) return `指数在跌，多数股票却在涨`;
-  if (m.ew_ret < 0 && m.breadth < 0.5) return `普跌：仅 ${b}% 的股票上涨`;
-  return `结构分化：${b}% 的股票在涨`;
+  const label = regimeLabel(regimeOf(m), lang);
+  return lang === "en" ? `${label} — ${b}% advance/decline breadth` : `${label}：上涨广度 ${b}%`;
 }

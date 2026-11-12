@@ -4,21 +4,16 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from pipeline import settings
-
-
 @pytest.fixture(scope="session")
-def con():
-    if not settings.LAKE.exists():
-        pytest.skip("lake not built")
-    c = duckdb.connect(str(settings.LAKE), read_only=True)
+def con(synthetic_lake):
+    c = duckdb.connect(str(synthetic_lake.path), read_only=True)
     yield c
     c.close()
 
 
 def test_market_rows(con):
     n = con.execute("SELECT count(*) FROM mart_market_day").fetchone()[0]
-    assert n > 2000
+    assert n == 30
 
 
 def test_breadth_bounds(con):
@@ -51,10 +46,10 @@ def test_latest_snapshot(con):
     row = con.execute(
         "SELECT trade_date, n_valid, breadth, ew_ret FROM mart_market_day ORDER BY trade_date DESC LIMIT 1"
     ).fetchone()
-    assert str(row[0]) >= "2026-11-10"
-    assert 4000 < row[1] < 6000
-    assert 0 < row[2] < 1
-    assert abs(row[3]) < 0.12
+    assert str(row[0]) == "2026-06-11"
+    assert row[1] == 6
+    assert row[2] == pytest.approx(3 / 5)
+    assert row[3] == pytest.approx(0.005 / 6)
 
 
 def test_sector_coverage(con):
@@ -65,7 +60,7 @@ def test_sector_coverage(con):
         """,
         [latest],
     ).fetchone()
-    assert 28 <= n_sectors <= 32
+    assert n_sectors == 3
     market_n = con.execute(
         "SELECT n_valid FROM mart_market_day WHERE trade_date = ?", [latest]
     ).fetchone()[0]

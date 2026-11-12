@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useUI } from "../store/ui";
 import { axisStyle, baseChart, paletteFor } from "../lib/theme";
 import { money, num, pct, ratio, shortDate } from "../lib/format";
+import { DataState } from "../components/DataState";
 import EChart from "../components/EChart";
 import { Card } from "../components/Card";
 import { PageHead } from "../components/PageHead";
@@ -18,7 +19,7 @@ export default function Sentiment() {
   const { theme, colorblind } = useUI();
   const p = paletteFor(theme, colorblind);
 
-  const { data } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
+  const { data, isError, isPending } = useQuery({ queryKey: ["market-all"], queryFn: () => api.marketSeries() });
   const { data: limitQ } = useQuery({ queryKey: ["limit-quality"], queryFn: api.limitQuality });
   const all = data ?? [];
   const rows = useMemo(() => all.slice(-120), [all]);
@@ -59,7 +60,7 @@ export default function Sentiment() {
         {
           name: zh ? "跌停" : "Limit-down",
           type: "bar",
-          data: rows.map((r) => -r.limit_down_n),
+          data: rows.map((r) => r.limit_down_n == null ? null : -r.limit_down_n),
           itemStyle: { color: p.down, opacity: 0.8, borderRadius: [0, 0, 2, 2] },
           barWidth: "52%",
         },
@@ -68,7 +69,7 @@ export default function Sentiment() {
           type: "line",
           xAxisIndex: 1,
           yAxisIndex: 1,
-          data: rows.map((r) => +(r.breadth * 100).toFixed(1)),
+          data: rows.map((r) => r.breadth == null ? null : +(r.breadth * 100).toFixed(1)),
           showSymbol: false,
           smooth: 0.25,
           lineStyle: { color: p.accent, width: 1.4 },
@@ -104,7 +105,7 @@ export default function Sentiment() {
         {
           name: zh ? "连板家数" : "2+ boards",
           type: "bar",
-          data: rows.map((r) => r.streak_n ?? 0),
+          data: rows.map((r) => r.streak_n),
           itemStyle: { color: p.accent, opacity: 0.85, borderRadius: [2, 2, 0, 0] },
           barWidth: "56%",
         },
@@ -174,7 +175,7 @@ export default function Sentiment() {
     } as never;
   }, [rows, p, lang, x]);
 
-  if (!rows.length) return <div className="skeleton h-[600px] w-full" />;
+  if (!rows.length) return <DataState error={isError} loading={isPending} />;
 
   const margin = [...all].reverse().find((r) => r.rzye != null);
   const zhaban = last.broken_rate ?? null;
@@ -201,8 +202,8 @@ export default function Sentiment() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Kpi label={zh ? "涨停家数" : "Limit-ups"} value={num(last.limit_up_n)} sub={zh ? "收盘价 ≥ 涨停价" : "close ≥ limit"} hint={zh ? "用 stk_limit 的涨停价判定，不猜 10%/20%" : "Judged with stk_limit, not a fixed 10%/20%"} />
         <Kpi label={zh ? "跌停家数" : "Limit-downs"} value={num(last.limit_down_n)} sub={zh ? "收盘价 ≤ 跌停价" : "close ≤ limit"} />
-        <Kpi label={zh ? "最高连板" : "Max streak"} value={`${last.max_streak ?? "—"}`} sub={`${num(last.streak_n ?? 0)} ${zh ? "家连板" : "with 2+ boards"}`} />
-        <Kpi label={zh ? "炸板率" : "Broken rate"} value={zhaban === null ? "—" : ratio(zhaban, 1)} sub={`${num(last.broken_n ?? 0)} ${zh ? "家炸板" : "broken"}`} hint={zh ? "炸板 /（官方涨停 + 炸板），官方口径不含 ST" : "broken / (official limit-ups + broken), official universe excludes ST"} />
+        <Kpi label={zh ? "最高连板" : "Max streak"} value={`${last.max_streak ?? "—"}`} sub={`${num(last.streak_n)} ${zh ? "家连板" : "with 2+ boards"}`} />
+        <Kpi label={zh ? "炸板率" : "Broken rate"} value={zhaban === null ? "—" : ratio(zhaban, 1)} sub={`${num(last.broken_n)} ${zh ? "家炸板" : "broken"}`} hint={zh ? "炸板 /（官方涨停 + 炸板），官方口径不含 ST" : "broken / (official limit-ups + broken), official universe excludes ST"} />
       </div>
 
       <div className="mt-1 flex items-center justify-between">
@@ -301,7 +302,7 @@ export default function Sentiment() {
         }
       >
         <div className="h-[240px] px-1 pb-1 md:px-2">
-          {limitQ?.length ? <EChart option={limitQualityChart(p, limitQ, lang)} /> : <div className="skeleton h-full w-full" />}
+          {limitQ?.length ? <EChart option={limitQualityChart(p, limitQ, lang)} /> : <DataState />}
         </div>
       </Card>
 

@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 import akshare as ak
@@ -26,7 +26,7 @@ def _ts_code(code: str) -> str:
 def _rate(ts_code: str, name: str) -> float:
     if ts_code.endswith(".BJ"):
         base = 0.30
-    elif ts_code.startswith(("688", "300")):
+    elif ts_code.startswith(("688", "300", "301")):
         base = 0.20
     else:
         base = 0.10
@@ -43,25 +43,34 @@ def snapshot() -> pd.DataFrame:
     """全市场快照（约 60s，进程内缓存一次）。"""
     if "snap" not in _CACHE:
         df = ak.stock_zh_a_spot_em()
-        df = df[df["最新价"].notna() & (df["最新价"] > 0)].copy()
+        df = df[df["最新价"].notna() & (df["最新价"] > 0)
+                & (pd.to_numeric(df["成交量"], errors="coerce") > 0)].copy()
         df["ts_code"] = df["代码"].map(_ts_code)
         _CACHE["snap"] = df
     return _CACHE["snap"]
 
 
-def is_trading_day(day: str) -> bool:
+def trading_days() -> list[str]:
     try:
         cal = ak.tool_trade_date_hist_sina()
-        dates = set(pd.to_datetime(cal["trade_date"]).dt.strftime("%Y%m%d"))
-        return day in dates
-    except Exception:
-        return datetime.strptime(day, "%Y%m%d").weekday() < 5
+        return sorted(set(pd.to_datetime(cal["trade_date"]).dt.strftime("%Y%m%d")))
+    except Exception as exc:
+        raise RuntimeError("备用交易日历不可用，不能以工作日代替交易日") from exc
+
+
+def is_trading_day(day: str) -> bool:
+    return day in trading_days()
 
 
 def _guard(day: str) -> None:
-    today = datetime.now().strftime("%Y%m%d")
+    now = datetime.now(timezone(timedelta(hours=8)))
+    today = now.strftime("%Y%m%d")
     if day != today:
         raise ValueError(f"akshare 快照只支持当天（{today}），收到 {day}")
+    if now.time() < time(15, 10):
+        raise ValueError("akshare 日线备用快照仅允许上海时间15:10后使用")
+    if not is_trading_day(day):
+        raise ValueError("akshare 快照日期不是确认的交易日")
 
 
 def daily(day: str) -> pd.DataFrame:
@@ -92,9 +101,10 @@ def daily_basic(day: str) -> pd.DataFrame:
             "ts_code": s["ts_code"],
             "trade_date": day,
             "turnover_rate": pd.to_numeric(s["换手率"], errors="coerce"),
-            "turnover_rate_f": pd.to_numeric(s["换手率"], errors="coerce"),
+            # Ordinary turnover and dynamic PE are not substitutes for these fields.
+            "turnover_rate_f": float("nan"),
             "volume_ratio": pd.to_numeric(s["量比"], errors="coerce"),
-            "pe_ttm": pd.to_numeric(s["市盈率-动态"], errors="coerce"),
+            "pe_ttm": float("nan"),
             "pb": pd.to_numeric(s["市净率"], errors="coerce"),
             "total_mv": pd.to_numeric(s["总市值"], errors="coerce") / 1e4,  # 元 -> 万元
             "circ_mv": pd.to_numeric(s["流通市值"], errors="coerce") / 1e4,
@@ -103,12 +113,26 @@ def daily_basic(day: str) -> pd.DataFrame:
     return out.dropna(subset=["circ_mv"])
 
 
-def stk_limit(day: str) -> pd.DataFrame:
+def stk_limit(day: str, con=None) -> pd.DataFrame:
     _guard(day)
     s = snapshot()
+    # Without a trustworthy listing date/calendar, leave limits unavailable.
+    seasoned = set()
+    if con is not None:
+        seasoned = {r[0] for r in con.execute(
+            """WITH m AS (
+                SELECT ts_code, coalesce(try_cast(list_date AS DATE),
+                       try_strptime(list_date::VARCHAR,'%Y%m%d')::DATE) AS listed_on
+                FROM core_stock_meta
+            ) SELECT ts_code FROM m WHERE listed_on IS NOT NULL AND (
+              listed_on < (SELECT min(trade_date) FROM core_trade_cal WHERE is_open=1)
+              OR (SELECT count(*) FROM core_trade_cal c WHERE c.is_open=1
+                  AND c.trade_date BETWEEN m.listed_on AND ?::DATE)>5)""",
+            [datetime.strptime(day, "%Y%m%d").date()],
+        ).fetchall()}
     rows = []
     for code, name, pre in zip(s["ts_code"], s["名称"], pd.to_numeric(s["昨收"], errors="coerce")):
-        if not pre or pre <= 0:
+        if code not in seasoned or pd.isna(pre) or pre <= 0:
             continue
         r = _rate(code, name)
         rows.append((code, _round2(pre * (1 + r)), _round2(pre * (1 - r))))
@@ -118,13 +142,14 @@ def stk_limit(day: str) -> pd.DataFrame:
 
 
 def adj_factor(con, day: str) -> pd.DataFrame:
-    """前一交易日因子顺延：当日无除权则正确，除权日会偏一天（已记录为已知限制）。"""
+    """Carry factors provisionally; callers must record degradation and backfill."""
+    _guard(day)
     df = con.execute(
         """
         SELECT ts_code, adj_factor
         FROM core_stock_day
         WHERE trade_date = (SELECT max(trade_date) FROM core_stock_day WHERE trade_date < ?)
-          AND adj_factor IS NOT NULL
+          AND adj_factor > 0 AND isfinite(adj_factor)
         """,
         [datetime.strptime(day, "%Y%m%d").date()],
     ).fetchdf()
@@ -138,7 +163,7 @@ def fetch(con, ds: str, day: str) -> pd.DataFrame | None:
     if ds == "daily_basic":
         return daily_basic(day)
     if ds == "stk_limit":
-        return stk_limit(day)
+        return stk_limit(day, con)
     if ds == "adj_factor":
         return adj_factor(con, day)
     return None

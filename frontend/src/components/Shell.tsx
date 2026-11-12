@@ -1,3 +1,4 @@
+import { quoteAgeDays } from "../lib/viewMetrics";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -148,10 +149,9 @@ export default function Shell() {
 
   const stale = useMemo(() => {
     if (!meta?.last_trade_date) return null;
-    const last = new Date(`${meta.last_trade_date}T00:00:00`).getTime();
-    const days = Math.floor((Date.now() - last) / 86400000);
-    if (days <= 7) return null;
-    return { days, months: Math.round(days / 30) };
+    const days = quoteAgeDays(meta.last_trade_date);
+    if (days < 1) return null;
+    return { days };
   }, [meta?.last_trade_date]);
 
   const printMode = location.pathname.startsWith("/briefing");
@@ -266,7 +266,7 @@ export default function Shell() {
           <button
             onClick={toggleColorblind}
             className="hidden h-[34px] w-[34px] place-items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] transition-colors hover:text-[var(--text)] sm:grid"
-            title={colorblind ? "多色（默认）" : "色盲友好（蓝/橙）"}
+            title={i18n.language === "en" ? (colorblind ? "Default palette" : "Colorblind palette (blue/orange)") : (colorblind ? "多色（默认）" : "色盲友好（蓝/橙）")}
             aria-pressed={colorblind}
           >
             <Palette size={15} className={colorblind ? "text-[var(--accent)]" : ""} />
@@ -300,7 +300,7 @@ export default function Shell() {
           <div className="no-print flex items-center gap-2 border-b border-[var(--warn)]/25 bg-[var(--warn-soft)] px-3 py-1.5 text-[11.5px] text-[var(--warn)] md:px-5">
             <span className="inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--warn)]" />
             <span className="truncate">
-              {i18n.language === "en" ? "Data update in progress — retrying…" : "数据更新中 · 稍后自动重试"}
+              {i18n.language === "en" ? "Data unavailable — retrying…" : "数据暂不可用 · 稍后自动重试"}
             </span>
           </div>
         )}
@@ -310,8 +310,8 @@ export default function Shell() {
             <span className="inline-block h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--warn)]" />
             <span className="truncate">
               {i18n.language === "en"
-                ? `Data is ${stale.months} months behind — run scripts/update.ps1`
-                : `数据已落后约 ${stale.months} 个月 · 运行 scripts/update.ps1 更新`}
+                ? `Latest observation: ${meta?.last_trade_date} (${stale.days} calendar days ago); holidays may explain the gap. Refresh to check.`
+                : `最新数据 ${meta?.last_trade_date}，距今 ${stale.days} 个自然日；可能包含休市日，可刷新确认。`}
             </span>
           </div>
         )}

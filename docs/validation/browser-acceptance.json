@@ -1,0 +1,166 @@
+{
+  "routes": [
+    {
+      "mode": "api",
+      "route": "/",
+      "charts": 3,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/market",
+      "charts": 3,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/regime",
+      "charts": 1,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/sectors",
+      "charts": 4,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/stocks",
+      "charts": 2,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/sentiment",
+      "charts": 4,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/watchlist",
+      "charts": 0,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/about",
+      "charts": 0,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/briefing",
+      "charts": 2,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "api",
+      "route": "/labs",
+      "charts": 6,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/",
+      "charts": 3,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/market",
+      "charts": 3,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/regime",
+      "charts": 1,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/sectors",
+      "charts": 4,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/stocks",
+      "charts": 2,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/sentiment",
+      "charts": 4,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/watchlist",
+      "charts": 0,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/about",
+      "charts": 0,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/briefing",
+      "charts": 2,
+      "alerts": [],
+      "invalid": false
+    },
+    {
+      "mode": "file",
+      "route": "/labs",
+      "charts": 6,
+      "alerts": [],
+      "invalid": false
+    }
+  ],
+  "errors": [],
+  "offlineExternalRequests": [],
+  "apiAppearance": {
+    "theme": "light",
+    "colorblind": "1",
+    "heading": "Index vs equal-weight"
+  },
+  "apiStaticParity": {
+    "dailyRows": 2414,
+    "monthlyRows": 120,
+    "differences": 0
+  },
+  "offlinePosition": {
+    "visible": true,
+    "charts": 2
+  },
+  "fileAppearance": {
+    "theme": "light",
+    "colorblind": "1",
+    "heading": "Index vs equal-weight"
+  },
+  "passed": true
+}

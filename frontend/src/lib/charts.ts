@@ -1,8 +1,9 @@
 import type { EChartsOption } from "echarts";
 import type { MarketDay, SectorDay } from "./api";
 import { axisStyle, baseChart, type Palette } from "./theme";
-import { shortDate } from "./format";
+import { money, shortDate } from "./format";
 import { regimeOf, regimeLabel } from "./regime";
+import { escapeHtml } from "./html";
 
 const axisDate = (rows: MarketDay[]) => rows.map((r) => shortDate(r.trade_date));
 const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
@@ -10,9 +11,9 @@ const L = (lang: string, zh: string, en: string) => (lang === "en" ? en : zh);
 /** 参与广度：近 N 日 breadth 面积 + 背离点 */
 export function breadthArea(p: Palette, rows: MarketDay[]): EChartsOption {
   const x = axisDate(rows);
-  const y = rows.map((r) => +(r.breadth * 100).toFixed(1));
+  const y = rows.map((r) => r.breadth == null ? null : +(r.breadth * 100).toFixed(1));
   const diverge = rows.map((r) =>
-    r.ew_ret > 0 && r.breadth < 0.5 ? [shortDate(r.trade_date), +(r.breadth * 100).toFixed(1)] : null,
+    r.ew_ret > 0 && r.breadth != null && r.breadth < 0.5 ? [shortDate(r.trade_date), +(r.breadth * 100).toFixed(1)] : null,
   );
   return {
     ...baseChart(p),
@@ -76,9 +77,9 @@ export function breadthArea(p: Palette, rows: MarketDay[]): EChartsOption {
 export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): EChartsOption {
   const x = axisDate(rows);
   const ew = rows.map((r) => +(r.ew_ret * 100).toFixed(2));
-  const hs = rows.map((r) => (r.hs300_ret === null ? null : +(r.hs300_ret * 100).toFixed(2)));
-  const cw = rows.map((r) => (r.cw_ret === null ? null : +(r.cw_ret * 100).toFixed(2)));
-  const br = rows.map((r) => +(r.breadth * 100).toFixed(1));
+  const hs = rows.map((r) => (r.hs300_ret == null ? null : +(r.hs300_ret * 100).toFixed(2)));
+  const cw = rows.map((r) => (r.cw_ret == null ? null : +(r.cw_ret * 100).toFixed(2)));
+  const br = rows.map((r) => r.breadth == null ? null : +(r.breadth * 100).toFixed(1));
 
   return {
     ...baseChart(p),
@@ -97,12 +98,12 @@ export function returnBreadth(p: Palette, rows: MarketDay[], lang: string): ECha
         if (!r) return "";
         const t = (k: string) => k;
         return `<div style="min-width:188px">
-          <div style="font-family:'JetBrains Mono Variable',monospace;font-size:12px;color:${p.muted};margin-bottom:6px">${r.trade_date} · ${t(regimeLabel(regimeOf(r), lang))}</div>
+          <div style="font-family:'JetBrains Mono Variable',monospace;font-size:12px;color:${p.muted};margin-bottom:6px">${escapeHtml(r.trade_date)} · ${t(regimeLabel(regimeOf(r), lang))}</div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "等权收益", "Equal-weight")}</span><b style="color:${r.ew_ret >= 0 ? p.up : p.down}">${(r.ew_ret * 100).toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "沪深300", "CSI 300")}</span><b>${r.hs300_ret === null ? "—" : (r.hs300_ret * 100).toFixed(2) + "%"}</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${br[i]}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${br[i] == null ? "—" : br[i] + "%"}</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨/下跌", "Adv/Dec")}</span><b>${r.n_adv} / ${r.n_dec}</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "Top10 贡献", "Top10 share")}</span><b>${((r.top10_share || 0) * 100).toFixed(0)}%</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "Top10 波动占比", "Top10 absolute-move share")}</span><b>${r.top10_share == null ? "—" : (r.top10_share * 100).toFixed(0) + "%"}</b></div>
         </div>`;
       },
     },
@@ -235,11 +236,11 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string, sel
     return p.muted;
   };
 
-  const pts = sectors.map((s) => {
+  const pts = sectors.filter((s) => s.breadth != null && Number.isFinite(s.breadth)).map((s) => {
     const isSel = selected === s.sw_l1;
     return {
       name: s.sw_l1,
-      value: [+(s.ew_ret * 100).toFixed(2), +(s.breadth * 100).toFixed(1), s.amount || 0, s.n, +(s.iqr * 100).toFixed(2)],
+      value: [s.ew_ret * 100, s.breadth * 100, s.amount || 0, s.n, s.iqr * 100],
       itemStyle: {
         color: quadColor(s),
         borderColor: isSel ? p.text : "transparent",
@@ -263,10 +264,10 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string, sel
     ...baseChart(p),
     grid: { left: 8, right: 18, top: 20, bottom: 24, containLabel: true },
     graphic: [
-      { type: "text", left: "7%", top: 26, style: { text: L(lang, "集中上涨", "Narrow rally"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
+      { type: "text", left: "7%", top: 26, style: { text: L(lang, "结构分化", "Divergent"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
       { type: "text", right: "4%", top: 26, style: { text: L(lang, "普涨", "Broad rally"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
       { type: "text", left: "7%", bottom: 44, style: { text: L(lang, "普跌", "Broad selloff"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
-      { type: "text", right: "4%", bottom: 44, style: { text: L(lang, "结构分化", "Divergent"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
+      { type: "text", right: "4%", bottom: 44, style: { text: L(lang, "集中上涨", "Narrow rally"), fill: p.faint, fontSize: 11, fontFamily: "JetBrains Mono Variable, monospace" } },
     ],
     tooltip: {
       ...baseChart(p).tooltip,
@@ -274,11 +275,11 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string, sel
         const q = params as { data: { name: string; value: number[] } };
         const [ret, breadth, amt, n, iqr] = q.data.value;
         return `<div style="min-width:158px">
-          <div style="font-weight:600;margin-bottom:6px">${q.data.name}</div>
+          <div style="font-weight:600;margin-bottom:6px">${escapeHtml(q.data.name)}</div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "行业收益", "Return")}</span><b style="color:${ret >= 0 ? p.up : p.down}">${ret.toFixed(2)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "上涨占比", "Breadth")}</span><b>${breadth.toFixed(0)}%</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "内部分化", "IQR")}</span><b>${iqr.toFixed(2)}pp</b></div>
-          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "成交额", "Turnover")}</span><b>${(amt / 1e8).toFixed(0)}亿</b></div>
+          <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "成交额", "Turnover")}</span><b>${money(amt, lang)}</b></div>
           <div style="display:flex;justify-content:space-between;gap:14px"><span>${L(lang, "成分股", "Constituents")}</span><b>${n}</b></div>
         </div>`;
       },
@@ -325,8 +326,8 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string, sel
           silent: true,
           data: [
             quad(0, x1, 50, 100, `${p.accent}03`),
-            quad(0, x1, 0, 50, `${p.muted}02`),
-            quad(x0, 0, 50, 100, `${p.copper}03`),
+            quad(0, x1, 0, 50, `${p.copper}03`),
+            quad(x0, 0, 50, 100, `${p.muted}02`),
             quad(x0, 0, 0, 50, `${p.down}03`),
           ] as any,
         },
@@ -339,7 +340,7 @@ export function sectorBubble(p: Palette, sectors: SectorDay[], lang: string, sel
 export function distributionChart(
   p: Palette,
   bins: { b: number; n: number; lo: number; hi: number }[],
-  stats: { med: number; p25: number; p75: number; n: number },
+  stats: { med: number | null; p25?: number | null; p75?: number | null; n: number },
   lang: string,
 ): EChartsOption {
   const N = 44;
@@ -348,10 +349,11 @@ export function distributionChart(
   const step = (hi - lo) / N;
   const counts = new Array(N).fill(0) as number[];
   bins.forEach((x) => {
-    const i = Math.min(N - 1, Math.max(0, (x.b || 1) - 1));
+    const i = Math.min(N - 1, Math.max(0, x.b));
     counts[i] += x.n;
   });
   const centers = Array.from({ length: N }, (_, i) => ((lo + (i + 0.5) * step) * 100));
+  const omitted = Math.max(0, stats.n - counts.reduce((sum, n) => sum + n, 0));
   const data = counts.map((n, i) => ({
     value: [centers[i], n],
     itemStyle: {
@@ -364,12 +366,16 @@ export function distributionChart(
   return {
     ...baseChart(p),
     grid: { left: 6, right: 10, top: 16, bottom: 38, containLabel: true },
+    graphic: [{ type: "text", right: 12, top: 0, style: {
+      text: L(lang, `±11%外未绘制 ${omitted} 只`, `${omitted} stocks outside ±11% omitted`),
+      fill: p.muted, fontSize: 10,
+    } }],
     tooltip: {
       ...baseChart(p).tooltip,
       formatter: (params: unknown) => {
         const q = params as { data: { value: [number, number] } };
         const [c, n] = q.data.value;
-        return `<div style="font-family:monospace">${c.toFixed(2)}% · ${n} ${lang === "en" ? "stocks" : "只"}</div>`;
+        return `<div style="font-family:monospace">${(c - step * 50).toFixed(2)}% – ${(c + step * 50).toFixed(2)}% · ${n} ${lang === "en" ? "stocks" : "只"}</div>`;
       },
     },
     xAxis: {
@@ -406,7 +412,7 @@ export function distributionChart(
         type: "bar",
         data,
         barWidth: 10,
-        markLine: {
+        markLine: stats.med == null ? undefined : {
           silent: true,
           symbol: "none",
           data: [{ xAxis: +(stats.med * 100).toFixed(2) }],

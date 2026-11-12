@@ -1,5 +1,7 @@
 # 发布说明（GitHub）
 
+> 以下完成勾选属于旧版本记录。当前候选版本的修复与验收以 [最终交付报告](release_completion_report.md) 为准，不能用下方历史勾选放行。
+
 ## 1. 仓库名
 
 **推荐：`breadthlab`**

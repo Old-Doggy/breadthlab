@@ -1,5 +1,7 @@
 # Technical notes
 
+> The older sections below describe the pre-audit release. The current pipeline has fourteen gates, per-day rollback, OS-owned publication locking and atomic HTML replacement. API updates call `pipeline.release`; failure preserves the previous HTML, and existing offline copies cannot receive future alerts. See [current technical notes](technical.md), [ADR-11](decisions/ADR-11-release-integrity.md) and the [repair report](release_fix_report.md). Frontend fixes, historical repairs on a database copy and actual browser validation are documented in the [completion report](release_completion_report.md).
+
 ## Architecture
 
 ```
@@ -34,12 +36,12 @@ Stack: DuckDB for local columnar aggregation, Flask for the API, React + TypeScr
 
 ## Update pipeline
 
-`python -m pipeline.update_daily`:
+`python -m pipeline.release` (steps 1–4 use update_daily):
 
 1. Extend the trading calendar and find missing sessions
 2. Fetch `daily / daily_basic / adj_factor / stk_limit / limit_list_d / moneyflow / margin` per day
 3. Write the core layer
-4. Run nine quality gates; blocking failures exit with code 2 and publish nothing
+4. Run fourteen gates in the daily transaction; blocking failures roll back the day and prevent publication
 5. `build_marts` rebuilds features and marts
 6. `export_static` regenerates the single-file build
 
@@ -49,15 +51,20 @@ On Windows, `scripts/update.ps1` wraps the chain for the 17:35 weekday task; Sun
 
 | # | Check | Level |
 |---|---|---|
-| 1 | Sample size ≥ 3,000 | block |
+| 1 | Sample size ≥ 3,000; previous-day ratio 0.95–1.05 | block |
 | 2 | Primary key unique | block |
 | 3 | Price sanity (high/low/close, return range) | block |
-| 4 | Adjustment factor coverage ≥ 95% | block |
-| 5 | Sector coverage ≥ 97% | block |
+| 4 | Return conflicts >0.1pp affect <1% of comparable rows | block |
+| 5 | Positive finite factor/capitalization/adjusted-price coverage ≥99% | block |
 | 6 | Breadth day-over-day sanity | warn |
-| 7 | Turnover non-negative and plausible | block |
-| 8 | Index completeness | warn |
-| 9 | Continuity with yesterday's mart | warn |
+| 7 | Sector coverage ≥97% | block |
+| 8 | All adjustment factors valid | warn |
+| 9 | Same-sample core EW change ≤8pp | warn |
+| 10 | Finite nonnegative amount and volume | block |
+| 11 | Positive limit-price coverage ≥99% of eligible sample | block |
+| 12 | Four benchmark indices complete | warn |
+| 13 | Index return consistency | block |
+| 14 | Listing dates present | block |
 
 Results go to `data/meta/quality/YYYYMMDD.json` and are shown on the Method & data screen.
 
@@ -95,7 +102,7 @@ Metric definitions: [metric_contracts.md](metric_contracts.md). Data setup: [dat
 
 - [x] Daily briefing PDF/PNG
 - [x] Holdings P&L, sector rotation, candlesticks, PE percentile
-- [x] Nine quality gates, update log, source reconciliation, failure alerts
+- [x] Fourteen quality gates, update log, source reconciliation, failure alerts
 - [x] Colorblind mode, URL state, PNG/CSV export
 - [ ] Point-in-time Shenwan membership (requires `index_member_all`)
 - [ ] Brinson attribution
