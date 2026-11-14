@@ -40,7 +40,7 @@ def test_watch_upsert_can_reset_positions_to_zero(local_client):
     ("http://localhost", "null"),
 ])
 def test_mutations_reject_untrusted_host_and_origin(local_client, base_url, origin):
-    headers = {"X-BreadthLab": "1"}
+    headers = {"X-Ashare-Radar": "1"}
     if origin:
         headers["Origin"] = origin
     response = local_client.post("/api/update", base_url=base_url, headers=headers)
@@ -153,7 +153,7 @@ def export_fixture(tmp_path, monkeypatch):
     (dist / "assets").mkdir()
     (dist / "index.html").write_text('<head></head><script type="module" src="/assets/app.js"></script>', encoding="utf-8")
     (dist / "assets" / "app.js").write_text('console.log("ok")', encoding="utf-8")
-    out = dist / "BreadthLab.html"
+    out = dist / "ashare-radar.html"
     out.write_text("previous complete publication", encoding="utf-8")
     payload = {
         "meta": {"n_days": 1, "last_trade_date": "2026-11-11", "status": "ok"},

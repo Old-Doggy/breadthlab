@@ -106,7 +106,7 @@ export default function Watchlist() {
     const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "breadthlab_watchlist.csv";
+    a.download = "ashare-radar_watchlist.csv";
     a.click();
     URL.revokeObjectURL(a.href);
   };

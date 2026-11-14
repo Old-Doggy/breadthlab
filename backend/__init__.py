@@ -1,1 +1,1 @@
-﻿"""BreadthLab API package."""
+"""Ashare Radar API package."""

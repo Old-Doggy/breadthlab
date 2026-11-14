@@ -47,7 +47,7 @@ Stack: DuckDB for local columnar aggregation, Flask for the API, React + TypeScr
 
 On Windows, `scripts/update.ps1` wraps the chain for the 17:35 weekday task; Sunday 02:00 runs a full rebuild.
 
-Double-click `start.bat` to launch the web app: it validates the interpreter, reuses a running server, builds the frontend if needed and opens the browser; `stop.bat` stops it. Override the port with `BREADTHLAB_PORT` (default 8000).
+Double-click `start.bat` to launch the web app: it validates the interpreter, reuses a running server, builds the frontend if needed and opens the browser; `stop.bat` stops it. Override the port with `ASHARE_RADAR_PORT` (default 8000).
 
 ## Quality gates
 
@@ -75,9 +75,9 @@ Results go to `data/meta/quality/YYYYMMDD.json` and are shown on the Method & da
 DuckDB allows one writer at a time.
 
 - API: a read-only connection per request, closed at request end
-- Updater: `connect_wait` retries every 5 seconds, 300 seconds by default (`BREADTHLAB_LOCK_TIMEOUT`)
+- Updater: `connect_wait` retries every 5 seconds, 300 seconds by default (`ASHARE_RADAR_LOCK_TIMEOUT`)
 - While the updater holds the write lock, the API returns `503 + Retry-After: 10`
-- The in-app "Fetch today" button calls `/api/update` with an `X-BreadthLab` header; a second concurrent run fails instead of reporting a false success
+- The in-app "Fetch today" button calls `/api/update` with an `X-Ashare-Radar` header; a second concurrent run fails instead of reporting a false success
 
 ## Failure alerts
 

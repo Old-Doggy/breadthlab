@@ -12,10 +12,10 @@ from tempfile import TemporaryDirectory
 import pytest
 
 
-_TEST_ROOT = TemporaryDirectory(prefix="breadthlab-tests-")
+_TEST_ROOT = TemporaryDirectory(prefix="ashare-radar-tests-")
 atexit.register(_TEST_ROOT.cleanup)
-os.environ["BREADTHLAB_DATA_DIR"] = _TEST_ROOT.name
-os.environ["BREADTHLAB_LOAD_ENV"] = "0"
+os.environ["ASHARE_RADAR_DATA_DIR"] = _TEST_ROOT.name
+os.environ["ASHARE_RADAR_LOAD_ENV"] = "0"
 os.environ["TUSHARE_TOKEN"] = ""
 
 

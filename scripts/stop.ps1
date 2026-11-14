@@ -29,7 +29,7 @@ if (-not $stopped) {
 }
 
 if ($stopped) {
-  Write-Host "BreadthLab 已停止"
+  Write-Host "Ashare Radar 已停止"
 } else {
-  Write-Host "没有找到运行中的 BreadthLab"
+  Write-Host "没有找到运行中的 Ashare Radar"
 }

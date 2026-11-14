@@ -1,4 +1,4 @@
-# BreadthLab 修复与真实副本验收报告
+# A股雷达 修复与真实副本验收报告
 
 日期：2026-11-12（上海时间）。基线：`d3127b83500d2aacdf71dcbbf18e3b4bb07e7442`；分支：`codex/release-audit-fixes`。源码与文档随本次提交进入仓库；数据副本与候选 HTML 不入库。第一阶段记录见 [release_fix_report.md](release_fix_report.md)，其“未修改前端/未联网/未修历史”已经被本报告更新。
 
@@ -9,9 +9,9 @@
 ## 交付位置与隐私边界
 
 - 修复后的数据库副本：`<验收副本>/lake.duckdb`，3,709,874,176 bytes。
-- 可双击的候选离线包：`<验收副本>/web/BreadthLab.html`，约60.8 MB。
+- 可双击的候选离线包：`<验收副本>/web/ashare-radar.html`，约60.8 MB。
 - 机器可读验收证据：[validation/](validation/)，完整操作和回补记录在副本的 `meta/`。
-- 原 `data/lake.duckdb` 仍为3,374,854,144 bytes、2026-11-11写入；原 `frontend/dist/BreadthLab.html` 仍为35,457,645 bytes、2026-11-11写入。实际回补、重算、导出均指向隔离目录，再保留到上述稳定交付目录。
+- 原 `data/lake.duckdb` 仍为3,374,854,144 bytes、2026-11-11写入；原 `frontend/dist/ashare-radar.html` 仍为35,457,645 bytes、2026-11-11写入。实际回补、重算、导出均指向隔离目录，再保留到上述稳定交付目录。
 - 现有凭据只由程序加载以调用获授权的数据源；没有查看、打印或复制 `.env`、token、密钥。Tushare客户端改为内存传参，移除会在用户目录持久化凭据的 `set_token` 调用。没有复制个人SQLite持仓或个人浏览器资料；浏览器使用临时配置与虚构持仓。
 - 没有将修复副本接管为默认生产库；没有注册计划任务或上传行情、HTML到远程。
 

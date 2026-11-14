@@ -2,7 +2,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
 const zh = {
-  brand: "BREADTHLAB",
+  brand: "A股雷达",
   brandSub: "A股市场结构终端",
   nav: {
     today: "今日盘面",
@@ -122,7 +122,7 @@ const zh = {
 };
 
 const en = {
-  brand: "BREADTHLAB",
+  brand: "ASHARE RADAR",
   brandSub: "A-Share Market Structure Terminal",
   nav: {
     today: "Today's tape",

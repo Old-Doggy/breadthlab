@@ -24,7 +24,7 @@ try {
       await cdp.send('Network.enable');
       await cdp.send('Network.emulateNetworkConditions', {offline:true,latency:0,downloadThroughput:0,uploadThroughput:0});
     }
-    const url = mode === 'api' ? base : pathToFileURL(join(root, 'web', 'BreadthLab.html')).href;
+    const url = mode === 'api' ? base : pathToFileURL(join(root, 'web', 'ashare-radar.html')).href;
     await page.goto(url, {waitUntil:'networkidle0'});
     if(mode === 'api') {
       apiSamples = await page.evaluate(async () => {

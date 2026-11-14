@@ -1,4 +1,4 @@
-"""BreadthLab API（Flask 同步版）。
+"""Ashare Radar API（Flask 同步版）。
 
 运行：python -m backend.main  （默认 127.0.0.1:8000）
 设计：口径在 mart 层算好，接口只做筛选与序列化；DuckDB 单连接 + 锁。
@@ -30,7 +30,7 @@ ROOT = settings.ROOT
 LAKE = settings.LAKE
 META = settings.META
 DB = settings.DATA / "app.sqlite"
-DIST = Path(os.getenv("BREADTHLAB_DIST_DIR", str(ROOT / "frontend" / "dist"))).resolve()
+DIST = Path(os.getenv("ASHARE_RADAR_DIST_DIR", str(ROOT / "frontend" / "dist"))).resolve()
 
 
 class ISOJSONProvider(DefaultJSONProvider):
@@ -217,7 +217,7 @@ def _job_progress(value: int, stage: str | None = None, message: str | None = No
 def _friendly_update_error(text: str) -> str:
     low = (text or "").lower()
     if "no module named 'duckdb'" in low or "no module named \"duckdb\"" in low:
-        return "运行环境缺少数据依赖，请用 breadthlab 环境重新执行"
+        return "运行环境缺少数据依赖，请用 ashare-radar 环境重新执行"
     if "tushare_token" in low or "token" in low and "not" in low:
         return "未配置 Tushare Token，暂时无法拉取数据"
     if "no permission" in low:
@@ -328,8 +328,8 @@ def _run_update_job() -> None:
 @app.post("/api/update")
 def start_update():
     # 自定义头会让跨站表单触发 CORS 预检而失败，避免任意网页触发本地更新
-    if request.headers.get("X-BreadthLab") != "1":
-        abort(403, "missing X-BreadthLab header")
+    if request.headers.get("X-Ashare-Radar") != "1":
+        abort(403, "missing X-Ashare-Radar header")
     with _update_lock:
         if _update_job.get("state") == "running":
             return jsonify(dict(_update_job)), 202
@@ -345,7 +345,7 @@ def start_update():
             trade_date=None,
         )
         snapshot = dict(_update_job)
-    threading.Thread(target=_run_update_job, name="breadthlab-update", daemon=True).start()
+    threading.Thread(target=_run_update_job, name="ashare-radar-update", daemon=True).start()
     return jsonify(snapshot), 202
 
 
@@ -779,7 +779,7 @@ def health():
 def index():
     if (DIST / "index.html").exists():
         return send_from_directory(DIST, "index.html")
-    return jsonify({"app": "BreadthLab", "api": "/api/meta"})
+    return jsonify({"app": "Ashare Radar", "api": "/api/meta"})
 
 
 @app.get("/<path:path>")
@@ -793,5 +793,5 @@ def static_files(path: str):
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("BREADTHLAB_PORT", "8000"))
+    port = int(os.getenv("ASHARE_RADAR_PORT", "8000"))
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True)

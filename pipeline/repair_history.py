@@ -31,7 +31,7 @@ def incomplete_dates(con, ratio: float = .85) -> list[dict]:
 def require_copy() -> None:
     production = (settings.ROOT / "data").resolve()
     if settings.DATA.resolve() == production or not settings.LAKE.is_file():
-        raise RuntimeError("set BREADTHLAB_DATA_DIR to an existing isolated database copy")
+        raise RuntimeError("set ASHARE_RADAR_DATA_DIR to an existing isolated database copy")
 
 
 def run(apply: bool = False) -> dict:

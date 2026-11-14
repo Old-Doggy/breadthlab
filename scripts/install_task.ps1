@@ -11,26 +11,26 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd 
   -ExecutionTimeLimit (New-TimeSpan -Minutes 45)
 
 # 把已验证的解释器写进任务，避免计划任务环境里 PATH 指向缺少依赖的 python。
-$dailyArgs = "-NoProfile -ExecutionPolicy Bypass -Command `"`$env:BREADTHLAB_PYTHON='$pyLiteral'; & '$updateScript'`""
+$dailyArgs = "-NoProfile -ExecutionPolicy Bypass -Command `"`$env:ASHARE_RADAR_PYTHON='$pyLiteral'; & '$updateScript'`""
 $dailyAction = New-ScheduledTaskAction -Execute "powershell.exe" `
   -Argument $dailyArgs -WorkingDirectory $root
 $dailyTrigger = New-ScheduledTaskTrigger -Weekly `
   -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -At 17:35
 
-Register-ScheduledTask -TaskName "BreadthLab Daily Update" `
+Register-ScheduledTask -TaskName "Ashare Radar Daily Update" `
   -Action $dailyAction -Trigger $dailyTrigger -Settings $settings `
-  -Description "BreadthLab: 收盘后增量更新 A 股数据并重新导出 dashboard" -Force | Out-Null
+  -Description "Ashare Radar: 收盘后增量更新 A 股数据并重新导出 dashboard" -Force | Out-Null
 
-$weeklyArgs = "-NoProfile -ExecutionPolicy Bypass -Command `"`$env:BREADTHLAB_PYTHON='$pyLiteral'; & '$rebuildScript'`""
+$weeklyArgs = "-NoProfile -ExecutionPolicy Bypass -Command `"`$env:ASHARE_RADAR_PYTHON='$pyLiteral'; & '$rebuildScript'`""
 $weeklyAction = New-ScheduledTaskAction -Execute "powershell.exe" `
   -Argument $weeklyArgs -WorkingDirectory $root
 $weeklyTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 02:00
 
-Register-ScheduledTask -TaskName "BreadthLab Weekly Rebuild" `
+Register-ScheduledTask -TaskName "Ashare Radar Weekly Rebuild" `
   -Action $weeklyAction -Trigger $weeklyTrigger -Settings $settings `
-  -Description "BreadthLab: 周日全量重算 mart、刷新状态与简报" -Force | Out-Null
+  -Description "Ashare Radar: 周日全量重算 mart、刷新状态与简报" -Force | Out-Null
 
-Write-Host "已注册：BreadthLab Daily Update（周一至周五 17:35）"
-Write-Host "已注册：BreadthLab Weekly Rebuild（周日 02:00）"
+Write-Host "已注册：Ashare Radar Daily Update（周一至周五 17:35）"
+Write-Host "已注册：Ashare Radar Weekly Rebuild（周日 02:00）"
 Write-Host "使用解释器：$py"
-Write-Host "手动运行：Start-ScheduledTask -TaskName 'BreadthLab Daily Update'"
+Write-Host "手动运行：Start-ScheduledTask -TaskName 'Ashare Radar Daily Update'"

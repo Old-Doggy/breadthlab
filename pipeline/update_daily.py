@@ -39,7 +39,7 @@ def log(msg: str) -> None:
 def tushare_pro():
     if not settings.TUSHARE_TOKEN:
         raise RuntimeError(
-            "未配置 TUSHARE_TOKEN。请在 breadthlab/.env 写入 TUSHARE_TOKEN=xxxx，"
+            "未配置 TUSHARE_TOKEN。请在 ashare-radar/.env 写入 TUSHARE_TOKEN=xxxx，"
             "离线重建请运行 python -m pipeline.release --rebuild。"
         )
     import tushare as ts

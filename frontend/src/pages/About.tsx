@@ -67,7 +67,7 @@ export default function About() {
   return (
     <div className="flex flex-col gap-4">
       <PageHead
-        kicker={`${zh ? "方法与数据" : "Method"} / v0.2.4`}
+        kicker={`${zh ? "方法与数据" : "Method"} / v0.3.0`}
         title={zh ? "数据口径与血缘" : "Data lineage and definitions"}
         dek={zh ? "数据血缘、指标口径、质量门禁、更新日志与源间对账" : "Lineage, metric definitions, quality gates, update log and source reconciliation"}
         chips={<><span className="pill">{meta?.last_trade_date ?? "—"}</span><span className="pill">{zh ? "门禁" : "Gates"} {quality ? `${quality.gates.filter((g) => g.pass).length}/${quality.gates.length}` : "—"}</span><span className="pill">{meta?.source ?? (zh ? "未知" : "unknown")}</span></>}
@@ -262,7 +262,7 @@ export default function About() {
       </Card>
 
       <div className="flex items-center justify-between pb-2 text-[11.5px] text-[var(--faint)]">
-        <span>BreadthLab v0.2.4 · DuckDB + Flask + React + ECharts</span>
+        <span>Ashare Radar v0.3.0 · DuckDB + Flask + React + ECharts</span>
         <span className="mono">data → lake → marts → app</span>
       </div>
     </div>

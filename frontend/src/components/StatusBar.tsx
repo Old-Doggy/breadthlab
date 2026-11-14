@@ -1,4 +1,4 @@
-﻿import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { hasDataWarnings } from "../lib/viewMetrics";
@@ -30,7 +30,7 @@ export function StatusBar() {
       <span className="ml-auto hidden xl:inline">daily → core → mart</span>
       <span className="hidden md:inline text-[var(--border-strong)]">|</span>
       <span className="hidden md:inline">⌘K {en ? "Commands" : "命令"}</span>
-      <span className="hidden md:inline">v0.2.4</span>
+      <span className="hidden md:inline">v0.3.0</span>
     </footer>
   );
 }

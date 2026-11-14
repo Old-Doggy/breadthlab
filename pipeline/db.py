@@ -21,7 +21,7 @@ _LOCK_HINTS = (
 
 def _default_timeout() -> float:
     try:
-        return float(os.getenv("BREADTHLAB_LOCK_TIMEOUT", "300"))
+        return float(os.getenv("ASHARE_RADAR_LOCK_TIMEOUT", "300"))
     except ValueError:
         return 300.0
 
@@ -46,7 +46,7 @@ def connect_wait(
     """等锁连接：更新任务与运行中的 API 共存时，等对方释放锁而不是直接失败。
 
     只读连接（API）与写连接（更新）在 DuckDB 里互斥；API 每个请求结束即释放，
-    因此更新任务通常几秒内就能拿到锁。超时由 BREADTHLAB_LOCK_TIMEOUT 控制。
+    因此更新任务通常几秒内就能拿到锁。超时由 ASHARE_RADAR_LOCK_TIMEOUT 控制。
     """
     timeout_sec = _default_timeout() if timeout_sec is None else timeout_sec
     deadline = time.time() + timeout_sec

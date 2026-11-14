@@ -4,7 +4,7 @@ import puppeteer from "puppeteer-core";
 import fs from "node:fs";
 import path from "node:path";
 
-const target = process.argv[2] || "dist/BreadthLab.html";
+const target = process.argv[2] || "dist/ashare-radar.html";
 const file = path.resolve(target);
 const url = "file:///" + file.replace(/\\/g, "/");
 const edge = [
@@ -56,7 +56,7 @@ await step("Today renders verdict", async () => {
   await page.waitForFunction(() => document.querySelectorAll(".card").length >= 3, { timeout: 15000 });
   const txt = await page.evaluate(() => document.body.innerText);
   if (txt.trim().length < 80) throw new Error("empty page");
-  if (!/BreadthLab|今日|盘面|Today/i.test(txt)) throw new Error("no shell");
+  if (!/A股雷达|Ashare Radar|今日|盘面|Today/i.test(txt)) throw new Error("no shell");
 });
 
 await step("Market page", () => clickNav("#/market", ".card"));

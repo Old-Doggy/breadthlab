@@ -44,7 +44,7 @@ data/snapshot/
 
 ```bash
 # .env
-BREADTHLAB_SOURCE=./data/snapshot
+ASHARE_RADAR_SOURCE=./data/snapshot
 
 python -m pipeline.bootstrap
 python -m pipeline.build_marts

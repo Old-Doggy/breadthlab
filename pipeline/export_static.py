@@ -1,6 +1,6 @@
 """把 DuckDB mart 导出成一个「单文件 HTML」dashboard。
 
-产物：frontend/dist/BreadthLab.html
+产物：frontend/dist/ashare-radar.html
 - 内联 CSS / JS / 字体 / 数据，双击即可打开（file://），无需服务器。
 - 同时写出一份 data/static-data.json 便于排查。
 
@@ -22,8 +22,8 @@ from .db import session
 from .io_utils import atomic_write_text
 from .locking import publish_lock
 
-DIST = Path(os.getenv("BREADTHLAB_DIST_DIR", str(settings.ROOT / "frontend" / "dist"))).resolve()
-OUT = DIST / "BreadthLab.html"
+DIST = Path(os.getenv("ASHARE_RADAR_DIST_DIR", str(settings.ROOT / "frontend" / "dist"))).resolve()
+OUT = DIST / "ashare-radar.html"
 
 
 def _round(v):

@@ -56,7 +56,7 @@ export default function Briefing() {
     <div className="briefing mx-auto max-w-[1040px] rounded-xl border border-[var(--border)] bg-white p-4 text-[#101828] shadow-sm sm:p-8">
       <div className="flex items-start justify-between border-b border-[#e4e7ec] pb-4">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#667085]">BreadthLab</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#667085]">{zh ? "A股雷达" : "Ashare Radar"}</div>
           <h1 className="serif mt-1 text-[27px] font-bold tracking-tight">{L("A股市场体检简报", "A-share daily market report")}</h1>
           <div className="mt-1 text-[12px] text-[#667085]">
             {last.trade_date} · {weekday(last.trade_date, lang)} · {L("数据源", "Source")} {meta?.source || L("未知", "unknown")}
@@ -183,7 +183,7 @@ export default function Briefing() {
         <span>
           {L("炸板率", "Broken rate")} {zhaban === null ? "—" : ratio(zhaban, 0)} · {L("连板家数", "2+ streak count")} {num(last.streak_n)} · {L("最高板数", "Max streak")} {last.max_streak ?? "—"} · {L("新高", "New highs")} {last.new_high_n} / {L("新低", "lows")} {last.new_low_n}
         </span>
-        <span className="sm:text-right">BreadthLab v2.4 · {L("数据截至", "Data as of")} {last.trade_date}</span>
+        <span className="sm:text-right">{zh ? "A股雷达" : "Ashare Radar"} v0.3 · {L("数据截至", "Data as of")} {last.trade_date}</span>
       </div>
     </div>
   );

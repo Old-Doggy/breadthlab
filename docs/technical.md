@@ -47,7 +47,7 @@ Flask API ──► React + ECharts（深/浅主题、中/英）
 
 `pipeline.release` 是 API/Windows 共用完整入口；`--rebuild` 仅验质、重建和导出。逐数据集记录完成状态，重查近20个交易日及旧缺口；两融/资金流/事件另行回补。Windows 工作日17:35触发，周日02:00重建；任务账户应使用上海时区。
 
-Windows 下双击 `start.bat` 启动 Web 端：脚本验证解释器、复用已运行服务、必要时构建前端并打开浏览器；`stop.bat` 停止。端口可用 `BREADTHLAB_PORT` 覆盖（默认 8000）。
+Windows 下双击 `start.bat` 启动 Web 端：脚本验证解释器、复用已运行服务、必要时构建前端并打开浏览器；`stop.bat` 停止。端口可用 `ASHARE_RADAR_PORT` 覆盖（默认 8000）。
 
 ## 质量门禁
 
@@ -75,7 +75,7 @@ Windows 下双击 `start.bat` 启动 Web 端：脚本验证解释器、复用已
 DuckDB 同一时刻只允许一个写连接。
 
 - API：每个请求开只读连接，请求结束立即释放
-- 更新器：`connect_wait` 每 5 秒重试，默认等 300 秒（`BREADTHLAB_LOCK_TIMEOUT` 可调）
+- 更新器：`connect_wait` 每 5 秒重试，默认等 300 秒（`ASHARE_RADAR_LOCK_TIMEOUT` 可调）
 - 更新期间 API 返回 `503 + Retry-After: 10`
 - API按钮通过固定参数调用完整发布链，要求自定义头及本机Host/Origin；同一进程已有任务返回202及原任务状态。跨进程使用操作系统文件锁，冲突非零退出，无“跳过即成功”。
 

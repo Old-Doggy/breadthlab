@@ -23,7 +23,7 @@ sources:
 
   snapshot:
     priority: 3
-    path: env:BREADTHLAB_SOURCE
+    path: env:ASHARE_RADAR_SOURCE
     note: 只读兜底，2014-01-02 → 2026-05-22
 
 datasets:

@@ -1,4 +1,4 @@
-# BreadthLab 发布前修复报告
+# A股雷达 发布前修复报告
 
 > **第一阶段历史记录，已由 [最终交付报告](release_completion_report.md) 更新。** 下文“未改前端”“未联网”“未修真实历史”及 NO-GO 是当时授权边界内的结论，不代表第二阶段交付状态。
 
@@ -15,7 +15,7 @@
 - 修改计算层、数据管道、API、离线导出器、Windows更新入口、CI、依赖和文档。
 - `frontend/` 下没有文件修改。前端只作静态阅读，没有启动浏览器或运行前端构建。
 - 没有读取真实 `.env`、token、私钥或生产 `data/`，没有访问真实 DuckDB/SQLite，也没有调用行情服务。
-- 测试在临时目录生成6只股票、30个交易日、3个行业和4个指数。导入项目之前设置 `BREADTHLAB_LOAD_ENV=0`，数据目录指向临时位置，Tushare token置空；测试阻断网络连接。见 [tests/conftest.py](../tests/conftest.py)。
+- 测试在临时目录生成6只股票、30个交易日、3个行业和4个指数。导入项目之前设置 `ASHARE_RADAR_LOAD_ENV=0`，数据目录指向临时位置，Tushare token置空；测试阻断网络连接。见 [tests/conftest.py](../tests/conftest.py)。
 - 没有执行真实更新、真实建库、真实导出、计划任务注册、发布或远程推送。现有行情库和已生成HTML没有被更新。
 
 ## 2. 修复清单

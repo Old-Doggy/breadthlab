@@ -136,7 +136,7 @@
 
 **实现**：
 - `backend/main.py`：`con()` 使用 Flask `g`，`teardown_appcontext` 关闭连接。
-- `pipeline/db.py`：`connect_wait()` 识别 DuckDB 锁错误，每 5 秒重试，默认 300 秒（`BREADTHLAB_LOCK_TIMEOUT` 可调），日志打印等待进度。
+- `pipeline/db.py`：`connect_wait()` 识别 DuckDB 锁错误，每 5 秒重试，默认 300 秒（`ASHARE_RADAR_LOCK_TIMEOUT` 可调），日志打印等待进度。
 - `update_daily` / `build_marts` / `refresh_status` / `bootstrap`：写会话使用 `session(wait=True)`。
 - API 捕获 `duckdb.Error` 返回 `503 + Retry-After: 10`。
 - 前端查询 3 次指数退避重试（1/2/4s），并显示“数据更新中”提示。

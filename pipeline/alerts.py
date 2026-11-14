@@ -28,7 +28,7 @@ def _friendly(message: str) -> str:
             return "数据更新未完成，请稍后重试"
         text = lines[-1]
     if "No module named" in text:
-        return "更新环境缺少依赖，请使用 breadthlab 环境执行"
+        return "更新环境缺少依赖，请使用 ashare-radar 环境执行"
     if "no permission" in text.lower():
         return "数据源权限不足，本次更新未完成"
     if "quality" in text.lower() or "gate" in text.lower():
@@ -67,7 +67,7 @@ def clear() -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="BreadthLab update alert")
+    ap = argparse.ArgumentParser(description="Ashare Radar update alert")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--set", action="store_true")
     g.add_argument("--clear", action="store_true")

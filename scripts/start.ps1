@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-function Test-BreadthLab([int]$candidate) {
+function Test-AshareRadar([int]$candidate) {
   try {
     $response = Invoke-WebRequest -Uri "http://127.0.0.1:$candidate/api/health" -UseBasicParsing -TimeoutSec 2
     return ($response.StatusCode -eq 200 -and $response.Content -match '"ok"\s*:\s*true')
@@ -25,15 +25,15 @@ function Open-Dashboard([int]$candidate) {
   Start-Process "http://127.0.0.1:$candidate"
 }
 
-if (Test-BreadthLab $Port) {
-  Write-Host "BreadthLab 已在运行：http://127.0.0.1:$Port"
+if (Test-AshareRadar $Port) {
+  Write-Host "Ashare Radar 已在运行：http://127.0.0.1:$Port"
   Open-Dashboard $Port
   exit 0
 }
 
 $dist = Join-Path $root "frontend\dist"
 $index = Join-Path $dist "index.html"
-$single = Join-Path $dist "BreadthLab.html"
+$single = Join-Path $dist "ashare-radar.html"
 
 if (-not (Test-Path -LiteralPath $index)) {
   if (Test-Path -LiteralPath $single) {
@@ -82,7 +82,7 @@ if (Test-PortBusy $chosen) {
   throw "端口 $Port 到 $($Port + 10) 都被占用"
 }
 
-$env:BREADTHLAB_PORT = "$chosen"
+$env:ASHARE_RADAR_PORT = "$chosen"
 $logDir = Join-Path $root "logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -99,7 +99,7 @@ Set-Content -Path $pidFile -Value $process.Id -Encoding ASCII
 $ready = $false
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Milliseconds 500
-  if (Test-BreadthLab $chosen) { $ready = $true; break }
+  if (Test-AshareRadar $chosen) { $ready = $true; break }
   if ($process.HasExited) { break }
 }
 if (-not $ready) {
@@ -109,7 +109,7 @@ if (-not $ready) {
   exit 1
 }
 
-Write-Host "BreadthLab 已启动：http://127.0.0.1:$chosen"
+Write-Host "Ashare Radar 已启动：http://127.0.0.1:$chosen"
 Write-Host "日志：$outLog"
 Open-Dashboard $chosen
 exit 0

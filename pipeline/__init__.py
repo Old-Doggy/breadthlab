@@ -1,1 +1,1 @@
-"""BreadthLab data pipeline."""
+"""Ashare Radar data pipeline."""

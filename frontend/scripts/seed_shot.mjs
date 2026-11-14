@@ -3,7 +3,7 @@ import puppeteer from "puppeteer-core";
 import fs from "node:fs";
 import path from "node:path";
 
-const file = path.resolve("dist/BreadthLab.html");
+const file = path.resolve("dist/ashare-radar.html");
 const url = "file:///" + file.replace(/\\/g, "/") + "#/watchlist";
 const edge = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",

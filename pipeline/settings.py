@@ -1,4 +1,4 @@
-"""BreadthLab 全局配置。
+"""Ashare Radar 全局配置。
 
 所有路径、口径常量集中在这里，禁止在其它模块里重复定义。
 """
@@ -10,12 +10,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
-if os.getenv("BREADTHLAB_LOAD_ENV", "1") != "0":
+if os.getenv("ASHARE_RADAR_LOAD_ENV", "1") != "0":
     load_dotenv(ROOT / ".env")
 
 # ---------------------------------------------------------------- 路径
-SOURCE_ROOT = Path(os.getenv("BREADTHLAB_SOURCE", str(ROOT / "data" / "snapshot")))
-DATA = Path(os.getenv("BREADTHLAB_DATA_DIR", str(ROOT / "data"))).resolve()
+SOURCE_ROOT = Path(os.getenv("ASHARE_RADAR_SOURCE", str(ROOT / "data" / "snapshot")))
+DATA = Path(os.getenv("ASHARE_RADAR_DATA_DIR", str(ROOT / "data"))).resolve()
 RAW = DATA / "raw"
 MARTS = DATA / "marts"
 META = DATA / "meta"

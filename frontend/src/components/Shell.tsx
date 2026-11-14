@@ -117,7 +117,7 @@ export default function Shell() {
   const moreActive = MORE.some((n) => location.pathname.startsWith(n.to));
 
   useEffect(() => {
-    document.title = `${title} · BreadthLab`;
+    document.title = `${title} · ${i18n.language === "zh" ? "A股雷达" : "Ashare Radar"}`;
   }, [title]);
 
   useEffect(() => {

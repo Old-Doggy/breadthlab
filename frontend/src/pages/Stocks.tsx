@@ -526,7 +526,7 @@ export default function Stocks() {
                       r.pb,
                     ]),
                   ],
-                  `breadthlab_stocks_${d ?? ""}.csv`,
+                  `ashare-radar_stocks_${d ?? ""}.csv`,
                 )
               }
               className="ml-1 h-[28px] rounded-md border border-[var(--border)] px-2.5 text-[11.5px] text-[var(--muted)] hover:text-[var(--text)]"

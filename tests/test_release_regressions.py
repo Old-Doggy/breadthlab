@@ -309,11 +309,11 @@ def test_export_payload_cannot_close_inline_script(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "DATA", tmp_path)
     monkeypatch.setattr(export, "DIST", dist)
-    monkeypatch.setattr(export, "OUT", dist / "BreadthLab.html")
+    monkeypatch.setattr(export, "OUT", dist / "ashare-radar.html")
     monkeypatch.setattr(export, "session", no_database)
     monkeypatch.setattr(export, "build_payload", lambda con: payload)
     export.main()
-    html = (dist / "BreadthLab.html").read_text(encoding="utf-8")
+    html = (dist / "ashare-radar.html").read_text(encoding="utf-8")
     assert "</script><script>alert" not in html
     assert "window.__BL_DATA__=" in html
 
@@ -328,7 +328,7 @@ def test_export_missing_asset_preserves_previous_html(tmp_path, monkeypatch):
         '<html><head></head><body><script type="module" src="/assets/missing.js"></script></body></html>',
         encoding="utf-8",
     )
-    out = dist / "BreadthLab.html"
+    out = dist / "ashare-radar.html"
     out.write_text("previous-complete-export", encoding="utf-8")
 
     class DummyConnection:

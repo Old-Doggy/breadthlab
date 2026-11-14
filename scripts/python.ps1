@@ -8,10 +8,10 @@ function Test-ProjectPython([string]$candidate) {
   return ($LASTEXITCODE -eq 0)
 }
 
-$py = $env:BREADTHLAB_PYTHON
+$py = $env:ASHARE_RADAR_PYTHON
 if ($py) {
   if (-not (Test-ProjectPython $py)) {
-    throw "BREADTHLAB_PYTHON does not provide duckdb/tushare: $py"
+    throw "ASHARE_RADAR_PYTHON does not provide duckdb/tushare: $py"
   }
   return $py
 }
@@ -29,8 +29,8 @@ if (Test-Path -LiteralPath $condaRegistry) {
 if ($env:CONDA_PREFIX) { $candidates += (Join-Path $env:CONDA_PREFIX "python.exe") }
 
 $candidates += @(
-  (Join-Path $env:USERPROFILE "anaconda3\envs\breadthlab\python.exe"),
-  (Join-Path $env:USERPROFILE "miniconda3\envs\breadthlab\python.exe"),
+  (Join-Path $env:USERPROFILE "anaconda3\envs\ashare-radar\python.exe"),
+  (Join-Path $env:USERPROFILE "miniconda3\envs\ashare-radar\python.exe"),
   (Join-Path $env:USERPROFILE "anaconda3\python.exe"),
   (Join-Path $env:USERPROFILE "miniconda3\python.exe"),
   "C:\ProgramData\Anaconda3\python.exe"
@@ -41,4 +41,4 @@ if ($command) { $candidates += $command.Source }
 foreach ($candidate in ($candidates | Select-Object -Unique)) {
   if (Test-ProjectPython $candidate) { return $candidate }
 }
-throw "No Python with duckdb/tushare found; set BREADTHLAB_PYTHON to the project interpreter"
+throw "No Python with duckdb/tushare found; set ASHARE_RADAR_PYTHON to the project interpreter"

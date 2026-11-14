@@ -95,4 +95,4 @@ DuckDB 同一时刻只允许一个写连接；旧版 API 常驻只读连接，�
 - 升级后**重启一次** `python -m backend.main`，旧进程的常驻连接才会释放。
 - 更新期间页面可能短暂提示“数据更新中”，属预期。
 - 若 10 分钟仍拿不到锁，检查是否有其它进程（DBeaver、另一个 Python）占着 `lake.duckdb`。
-- 等待超时可用环境变量调整：`$env:BREADTHLAB_LOCK_TIMEOUT = "600"`。
+- 等待超时可用环境变量调整：`$env:ASHARE_RADAR_LOCK_TIMEOUT = "600"`。

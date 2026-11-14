@@ -183,7 +183,7 @@ export default function Sectors() {
                   </span>
                 ))}
                 <button
-                  onClick={() => downloadDataUrl(chartRef.current?.getDataURL(p.bg) ?? null, `breadthlab_sectors_${d ?? ""}.png`)}
+                  onClick={() => downloadDataUrl(chartRef.current?.getDataURL(p.bg) ?? null, `ashare-radar_sectors_${d ?? ""}.png`)}
                   className="ml-1 h-[27px] rounded border border-[var(--border)] px-2 font-mono text-[11px] text-[var(--faint)] hover:text-[var(--text)]"
                 >
                   PNG

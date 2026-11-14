@@ -1,4 +1,4 @@
-﻿# Generate daily briefing PDF + PNG without a server.
+# Generate daily briefing PDF + PNG without a server.
 # Edge is given an ASCII-only temp path to avoid code-page issues with Chinese paths.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -10,14 +10,14 @@ $edge = @(
 
 if (-not $edge) { throw "Edge/Chrome not found" }
 
-$html = Join-Path $root "frontend\dist\BreadthLab.html"
+$html = Join-Path $root "frontend\dist\ashare-radar.html"
 if (-not (Test-Path $html)) { throw "Run python -m pipeline.export_static first" }
 
 $stamp = Get-Date -Format "yyyyMMdd"
 $outDir = Join-Path $root "data\snapshots\$stamp"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-$tmp = Join-Path $env:TEMP "breadthlab_briefing"
+$tmp = Join-Path $env:TEMP "ashare-radar_briefing"
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $tmpHtml = Join-Path $tmp "dashboard.html"
 $tmpPdf = Join-Path $tmp "briefing.pdf"

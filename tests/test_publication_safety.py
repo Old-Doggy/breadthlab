@@ -46,7 +46,7 @@ def test_release_clears_alert_only_after_complete_export(tmp_path, monkeypatch, 
 def test_os_lock_reentrant_but_rejects_other_process(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA", tmp_path)
     child = "from pipeline.locking import publish_lock\nwith publish_lock(): print('acquired')"
-    env = dict(os.environ, BREADTHLAB_DATA_DIR=str(tmp_path), BREADTHLAB_LOAD_ENV="0", TUSHARE_TOKEN="")
+    env = dict(os.environ, ASHARE_RADAR_DATA_DIR=str(tmp_path), ASHARE_RADAR_LOAD_ENV="0", TUSHARE_TOKEN="")
     with publish_lock(), publish_lock():
         blocked = subprocess.run([sys.executable, "-c", child], env=env, capture_output=True, text=True, timeout=15)
         assert blocked.returncode != 0

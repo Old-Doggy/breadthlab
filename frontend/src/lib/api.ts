@@ -374,7 +374,7 @@ export const api = {
 
   startUpdate: async (): Promise<UpdateJob> => {
     if (S) throw new Error("static mode");
-    const res = await fetch("/api/update", { method: "POST", headers: { "X-BreadthLab": "1" } });
+    const res = await fetch("/api/update", { method: "POST", headers: { "X-Ashare-Radar": "1" } });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return (await res.json()) as UpdateJob;
   },

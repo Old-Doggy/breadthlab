@@ -1,4 +1,4 @@
-# 规格完成度审计（对照 `BreadthLab_项目总提示词_v2.md`）
+# 规格完成度审计（对照 `项目总提示词_v2.md`）
 
 > 此文为历史规格盘点，含相互矛盾和已过时状态。当前十四门禁、发布链、验证结果与剩余限制以 [最终交付报告](release_completion_report.md) 和 technical.md 为准。
 
@@ -63,7 +63,7 @@
 | 计划任务 | ✅ 已注册（周一至周五 **17:35**，非规格的 17:30），手动跑 `result=0` |
 | 失败重试 | ✅ 3 次（45/90/135s） |
 | 锁文件 / 30 分钟超时 | ✅ `data/.update.lock` |
-| 周日全量重算 | ✅ `BreadthLab Weekly Rebuild`（周日 02:00） |
+| 周日全量重算 | ✅ `A股雷达 Weekly Rebuild`（周日 02:00） |
 | `status.json` 字段 | ✅ rows/coverage/sources/gates 已补 |
 | 顶部徽章（覆盖/更新时间） | ⚠️ 只显示日期；未显示覆盖率和更新时间 |
 | 桌面告警 / SMTP | ❌ 未实现 |

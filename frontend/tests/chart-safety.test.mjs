@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as echarts from "echarts";
 
-const temporary = mkdtempSync(join(tmpdir(), "breadthlab-chart-test-"));
+const temporary = mkdtempSync(join(tmpdir(), "ashare-radar-chart-test-"));
 process.on("exit", () => rmSync(temporary, { recursive: true, force: true }));
 globalThis.window = { location: { search: "" } };
 globalThis.localStorage = { getItem: () => null };

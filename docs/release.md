@@ -4,14 +4,11 @@
 
 ## 1. 仓库名
 
-**推荐：`breadthlab`**
+**最终：`ashare-radar`（A股雷达）**
 
-- 10 字符、全小写、无连字符
-- `breadth` = 市场宽度（产品核心指标），`lab` = 可探索/可扩展
-- 与 Python 包名、DuckDB 文件名一致，零改名成本
-- 组合词，重名概率低
-
-**备选**：`breadthlab-cn`（强调 A 股）、`a-share-breadth`（最直白）、`breadth-terminal`（强调终端形态）
+- 12 字符、全小写、连字符分隔；`ashare` + `radar` 一眼能读出用途
+- 替代早期名称：不再只强调“广度/实验室”，产品覆盖广度、行业、个股、情绪与持仓
+- 与 Python 包名 `ashare-radar`、单文件 `ashare-radar.html` 保持一致
 
 ## 2. 仓库描述
 
@@ -34,8 +31,8 @@
 ## 5. 推送命令
 
 ```powershell
-cd breadthlab
-git remote add origin git@github.com:<用户名>/a-share-breadth-dashboard.git
+cd ashare-radar
+git remote add origin git@github.com:<用户名>/ashare-radar.git
 git branch -M main
 git push -u origin main
 git tag -a v0.2.0 -m "v0.2.0: holdings, rotation, k-line, seal quality, colorblind, export"
@@ -45,7 +42,7 @@ git push origin v0.2.0
 若用 HTTPS：
 
 ```powershell
-git remote add origin https://github.com/<用户名>/a-share-breadth-dashboard.git
+git remote add origin https://github.com/<用户名>/ashare-radar.git
 ```
 
 ## 6. 推送后
