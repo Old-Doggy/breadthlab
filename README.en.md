@@ -5,7 +5,7 @@
 <p align="center">Market breadth and structure dashboard for China A-shares</p>
 
 <p align="center">
-  <a href="https://github.com/Old-Doggy/breadthlab/actions/workflows/ci.yml"><img src="https://github.com/Old-Doggy/breadthlab/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Old-Doggy/a-share-breadth-dashboard/actions/workflows/ci.yml"><img src="https://github.com/Old-Doggy/a-share-breadth-dashboard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/node-22.18%2B-339933?logo=node.js&logoColor=white" alt="Node">
@@ -33,7 +33,7 @@ Requirements: Python 3.12, Node 22.18+, a Tushare Pro token (additional endpoint
 Double-click `start.bat`: it picks a Python with duckdb/tushare, starts the server and opens http://127.0.0.1:8000. If it is already running, it just opens the page. Double-click `stop.bat` to stop it. A missing frontend build is created with `npm install && npm run build`.
 
 ```bash
-git clone https://github.com/Old-Doggy/breadthlab.git
+git clone https://github.com/Old-Doggy/a-share-breadth-dashboard.git
 cd breadthlab
 conda create -n breadthlab python=3.12 -y
 conda activate breadthlab

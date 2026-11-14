@@ -35,7 +35,7 @@
 
 ```powershell
 cd breadthlab
-git remote add origin git@github.com:<用户名>/breadthlab.git
+git remote add origin git@github.com:<用户名>/a-share-breadth-dashboard.git
 git branch -M main
 git push -u origin main
 git tag -a v0.2.0 -m "v0.2.0: holdings, rotation, k-line, seal quality, colorblind, export"
@@ -45,7 +45,7 @@ git push origin v0.2.0
 若用 HTTPS：
 
 ```powershell
-git remote add origin https://github.com/<用户名>/breadthlab.git
+git remote add origin https://github.com/<用户名>/a-share-breadth-dashboard.git
 ```
 
 ## 6. 推送后

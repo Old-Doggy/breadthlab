@@ -5,7 +5,7 @@
 <p align="center">A 股市场宽度与结构面板</p>
 
 <p align="center">
-  <a href="https://github.com/Old-Doggy/breadthlab/actions/workflows/ci.yml"><img src="https://github.com/Old-Doggy/breadthlab/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Old-Doggy/a-share-breadth-dashboard/actions/workflows/ci.yml"><img src="https://github.com/Old-Doggy/a-share-breadth-dashboard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/node-22.18%2B-339933?logo=node.js&logoColor=white" alt="Node">
@@ -33,7 +33,7 @@
 双击 `start.bat`：自动选择带依赖的 Python、启动服务并打开 http://127.0.0.1:8000；若服务已在运行则直接打开。停止双击 `stop.bat`。首次缺少前端构建时会自动执行 `npm install && npm run build`。
 
 ```bash
-git clone https://github.com/Old-Doggy/breadthlab.git
+git clone https://github.com/Old-Doggy/a-share-breadth-dashboard.git
 cd breadthlab
 conda create -n breadthlab python=3.12 -y
 conda activate breadthlab
